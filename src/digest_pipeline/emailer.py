@@ -169,11 +169,8 @@ def send_digest(
         return
 
     logger.info("Sending digest email via %s:%d.", settings.smtp_host, settings.smtp_port)
-    if settings.smtp_port == 465:
-        server = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port)
-    else:
-        server = smtplib.SMTP(settings.smtp_host, settings.smtp_port)
-        server.starttls()
+    server = smtplib.SMTP(settings.smtp_host, settings.smtp_port)
+    server.starttls()
     with server:
         server.login(settings.smtp_user, settings.smtp_password)
         server.send_message(msg)

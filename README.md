@@ -223,15 +223,15 @@ digest-pipeline run --dry-run --topics cs.AI
 
 ### Scheduling with Cron
 
-To receive daily digests automatically, set up a cron job. The pipeline
-fetches papers from the last 24 hours, so running it once daily is ideal.
+The pipeline fetches papers from the last 24 hours, so running it once
+daily on weekdays is ideal. arXiv publishes new submissions Sun-Thu
+around 20:00 UTC and does not publish on weekends, so a Monday-Friday
+schedule catches every batch.
 
-**1. Find your Python path:**
+**1. Find your executable path:**
 
 ```bash
 which digest-pipeline
-# or, if installed in a virtualenv:
-/path/to/venv/bin/digest-pipeline
 ```
 
 **2. Edit your crontab:**
@@ -240,38 +240,46 @@ which digest-pipeline
 crontab -e
 ```
 
-**3. Add a daily schedule:**
+**3. Add the pipeline and log rotation:**
 
 ```cron
-# Run digest at 7:00 AM UTC every day
-0 7 * * * cd /path/to/Daylight-know && /path/to/venv/bin/digest-pipeline >> /var/log/digest-pipeline.log 2>&1
+# Research digest pipeline - Mon-Fri at 7:00 AM EST (12:00 UTC)
+0 12 * * 1-5 cd /path/to/Daylight-know && /path/to/bin/digest-pipeline >> /path/to/Daylight-know/logs/digest-pipeline.log 2>&1
 
-# Or, run at 6:00 AM US Eastern (with timezone-aware scheduling)
-0 11 * * * cd /path/to/Daylight-know && /path/to/venv/bin/digest-pipeline >> /var/log/digest-pipeline.log 2>&1
+# Log rotation - keep previous week's log, truncate current (Monday midnight)
+0 0 * * 1 cp /path/to/Daylight-know/logs/digest-pipeline.log /path/to/Daylight-know/logs/digest-pipeline.log.prev && : > /path/to/Daylight-know/logs/digest-pipeline.log
 ```
 
-**Tips for cron scheduling:**
+Replace `/path/to/Daylight-know` with your project directory and
+`/path/to/bin/digest-pipeline` with the output of `which digest-pipeline`.
 
-- **Timing:** arXiv publishes new submissions around 20:00 UTC (Sun-Thu),
-  so scheduling your digest for early morning gives the best coverage of
-  the previous day's papers.
-- **Working directory:** Use `cd` to ensure the `.env` file and ChromaDB
-  storage directory are found correctly.
-- **Logging:** Redirect output to a log file for debugging.
-- **Weekends:** arXiv doesn't publish on weekends (Fri/Sat nights), so
-  a Monday morning run may return fewer results. Consider running
-  Monday-Friday only: `0 7 * * 1-5`.
+**Important:**
+
+- **Working directory:** The `cd` is required so the pipeline finds your
+  `.env` file and the relative ChromaDB storage path resolves correctly.
+- **Logs directory:** Create `logs/` in the project root before the first
+  run: `mkdir -p logs`
+- **Timing:** 12:00 UTC = 7:00 AM EST. Adjust for your timezone. Morning
+  runs give the best coverage since arXiv publishes the previous evening.
+- **Log rotation:** The Monday midnight job copies the current log to
+  `.log.prev` and truncates the current file, keeping two weeks of history.
 
 **4. Verify it works:**
 
 ```bash
 # Test the exact command cron will run
-cd /path/to/Daylight-know && /path/to/venv/bin/digest-pipeline
+cd /path/to/Daylight-know && digest-pipeline
 ```
+
+**5. Set production mode:**
+
+Make sure `DRY_RUN=false` in your `.env` before the first scheduled run,
+and verify your SMTP credentials work with a manual test run first.
 
 ### Scheduling with systemd (Linux)
 
-For more robust scheduling with logging and restart capabilities:
+For more robust scheduling with automatic logging via `journalctl` and
+`Persistent=true` (runs missed jobs on next boot):
 
 ```ini
 # /etc/systemd/system/digest-pipeline.service
@@ -282,17 +290,17 @@ After=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/path/to/Daylight-know
-ExecStart=/path/to/venv/bin/digest-pipeline
+ExecStart=/path/to/bin/digest-pipeline
 User=your-username
 ```
 
 ```ini
 # /etc/systemd/system/digest-pipeline.timer
 [Unit]
-Description=Run Research Digest Pipeline daily
+Description=Run Research Digest Pipeline weekdays
 
 [Timer]
-OnCalendar=*-*-* 07:00:00 UTC
+OnCalendar=Mon..Fri *-*-* 12:00:00 UTC
 Persistent=true
 
 [Install]

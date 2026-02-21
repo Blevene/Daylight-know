@@ -1,5 +1,6 @@
 # Project-specific
 data/
+logs/
 .claude/
 CLAUDE.md
 **/CLAUDE.md

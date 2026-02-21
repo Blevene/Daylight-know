@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # ── Email / SMTP ────────────────────────────────────────────
     smtp_host: str = Field(default="smtp.gmail.com")
-    smtp_port: int = Field(default=465)
+    smtp_port: int = Field(default=587)
     smtp_user: str = Field(default="")
     smtp_password: str = Field(default="")
     email_from: str = Field(default="")
