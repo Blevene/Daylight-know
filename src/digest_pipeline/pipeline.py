@@ -28,7 +28,12 @@ from digest_pipeline.emailer import send_digest
 from digest_pipeline.extractor import extract_text
 from digest_pipeline.fetcher import Paper, fetch_papers
 from digest_pipeline.github_trending import fetch_trending, format_for_prompt
-from digest_pipeline.hf_fetcher import fetch_hf_papers
+from digest_pipeline.hf_fetcher import (
+    HFDailyPaper,
+    fetch_hf_daily,
+    normalize_arxiv_id,
+    reconcile_hf_papers,
+)
 from digest_pipeline.postprocessor import extract_implications, generate_critiques
 from digest_pipeline.s2_fetcher import fetch_s2_papers
 from digest_pipeline.summarizer import summarize
@@ -85,10 +90,13 @@ def run(settings: Settings | None = None) -> None:
     # ── Step 1: Fetch papers from all enabled sources ───────────
     papers = fetch_papers(settings)
 
+    # HuggingFace: deduplicate against arXiv, split into new vs trending
+    hf_trending: list[HFDailyPaper] = []
     if settings.huggingface_enabled:
-        hf_papers = fetch_hf_papers(settings)
-        logger.info("Fetched %d papers from HuggingFace.", len(hf_papers))
-        papers.extend(hf_papers)
+        hf_daily = fetch_hf_daily(settings)
+        known_ids = {normalize_arxiv_id(p.paper_id) for p in papers}
+        hf_new, hf_trending = reconcile_hf_papers(hf_daily, known_ids)
+        papers.extend(hf_new)
 
     if settings.semanticscholar_enabled:
         s2_papers = fetch_s2_papers(settings)
@@ -161,6 +169,7 @@ def run(settings: Settings | None = None) -> None:
         analyses,
         date_str,
         settings,
+        hf_trending=hf_trending,
     )
 
     logger.info("Pipeline run complete. %d paper(s) in digest.", len(processed_papers))

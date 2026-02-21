@@ -179,14 +179,16 @@ def test_dry_run_includes_implications_and_critiques(make_settings, capsys):
     assert "Limitation in Y." in captured.out
 
 
-@patch("digest_pipeline.emailer.smtplib.SMTP_SSL")
+@patch("digest_pipeline.emailer.smtplib.SMTP")
 def test_real_send(mock_smtp_cls, make_settings):
     settings = make_settings(dry_run=False)
     mock_server = MagicMock()
-    mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_server)
-    mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
+    mock_smtp_cls.return_value = mock_server
+    mock_server.__enter__ = MagicMock(return_value=mock_server)
+    mock_server.__exit__ = MagicMock(return_value=False)
 
     papers = _make_papers()
     send_digest(papers, "2025-01-15", settings)
+    mock_server.starttls.assert_called_once()
     mock_server.login.assert_called_once_with("u", "p")
     mock_server.send_message.assert_called_once()

@@ -1,14 +1,21 @@
-"""HuggingFace Daily Papers fetching with 24-hour filtering.
+"""HuggingFace Daily Papers fetching with deduplication support.
 
 Fetches recent papers from the HuggingFace Daily Papers API and returns
-them as Paper objects compatible with the rest of the pipeline.
-Papers from this source do not include PDFs — the pipeline uses their
-abstracts directly for chunking and summarization.
+structured results that the pipeline can reconcile against arXiv papers
+already fetched.  Since HuggingFace papers *are* arXiv papers, the pipeline
+uses the raw arXiv ID to deduplicate:
+
+- Papers already fetched from arXiv are noted as "trending" rather than
+  re-processed.
+- Papers *not* in the arXiv set are converted to ``Paper`` objects and
+  added to the main pipeline.
 """
 
 from __future__ import annotations
 
 import logging
+import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -21,6 +28,23 @@ logger = logging.getLogger(__name__)
 HF_DAILY_PAPERS_URL = "https://huggingface.co/api/daily_papers"
 
 
+@dataclass
+class HFDailyPaper:
+    """A paper from the HuggingFace Daily Papers feed.
+
+    Carries the raw arXiv ID so the pipeline can match it against
+    papers already fetched from arXiv.
+    """
+
+    arxiv_id: str
+    title: str
+    authors: list[str]
+    abstract: str
+    url: str
+    published: datetime
+    upvotes: int = 0
+
+
 def _within_last_24h(dt: datetime) -> bool:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     if dt.tzinfo is None:
@@ -28,12 +52,21 @@ def _within_last_24h(dt: datetime) -> bool:
     return dt >= cutoff
 
 
-def fetch_hf_papers(settings: Settings) -> list[Paper]:
+def normalize_arxiv_id(raw_id: str) -> str:
+    """Strip version suffix from an arXiv ID for comparison.
+
+    ``"2401.00001v2"`` → ``"2401.00001"``
+    ``"2401.00001"``   → ``"2401.00001"``
+    """
+    return re.sub(r"v\d+$", "", raw_id)
+
+
+def fetch_hf_daily(settings: Settings) -> list[HFDailyPaper]:
     """Fetch recent papers from HuggingFace Daily Papers.
 
-    Returns Paper objects with ``source="huggingface"``.  Papers outside
-    the 24-hour window are filtered out.  No PDFs are downloaded — the
-    abstract is used directly by the pipeline.
+    Returns ``HFDailyPaper`` objects (not ``Paper``) so the pipeline can
+    reconcile them against arXiv papers before deciding what to process.
+    Papers outside the 24-hour window are filtered out.
     """
     logger.info(
         "Querying HuggingFace Daily Papers (max %d).",
@@ -52,12 +85,13 @@ def fetch_hf_papers(settings: Settings) -> list[Paper]:
         logger.exception("Failed to fetch HuggingFace Daily Papers.")
         return []
 
-    papers: list[Paper] = []
+    results: list[HFDailyPaper] = []
     for entry in data[: settings.huggingface_max_results]:
         paper_data = entry.get("paper", {})
-        paper_id = paper_data.get("id", "")
+        arxiv_id = paper_data.get("id", "")
         title = paper_data.get("title", "")
         abstract = paper_data.get("summary", "")
+        upvotes = paper_data.get("upvotes", 0)
 
         authors_raw = paper_data.get("authors", [])
         authors = [a.get("name", a.get("user", "")) for a in authors_raw if isinstance(a, dict)]
@@ -71,21 +105,69 @@ def fetch_hf_papers(settings: Settings) -> list[Paper]:
         if not _within_last_24h(published):
             continue
 
-        if not paper_id or not title:
+        if not arxiv_id or not title:
             continue
 
-        papers.append(
-            Paper(
-                paper_id=f"hf_{paper_id}",
+        results.append(
+            HFDailyPaper(
+                arxiv_id=arxiv_id,
                 title=title,
                 authors=authors,
                 abstract=abstract,
-                url=f"https://huggingface.co/papers/{paper_id}",
+                url=f"https://huggingface.co/papers/{arxiv_id}",
                 published=published,
-                source="huggingface",
-                pdf_path=None,
+                upvotes=upvotes,
             )
         )
 
-    logger.info("Fetched %d papers from HuggingFace within the 24-hour window.", len(papers))
-    return papers
+    logger.info("Fetched %d papers from HuggingFace within the 24-hour window.", len(results))
+    return results
+
+
+def reconcile_hf_papers(
+    hf_papers: list[HFDailyPaper],
+    known_ids: set[str],
+) -> tuple[list[Paper], list[HFDailyPaper]]:
+    """Split HuggingFace papers into new papers and trending-existing.
+
+    Parameters
+    ----------
+    hf_papers:
+        Raw results from ``fetch_hf_daily``.
+    known_ids:
+        Set of *normalized* arXiv IDs already fetched (version-stripped).
+
+    Returns
+    -------
+    (new_papers, trending_existing)
+        ``new_papers`` — ``Paper`` objects for papers not in the arXiv set.
+        ``trending_existing`` — ``HFDailyPaper`` entries whose arXiv ID
+        matches an already-fetched paper (for the trending sidebar).
+    """
+    new_papers: list[Paper] = []
+    trending_existing: list[HFDailyPaper] = []
+
+    for hf in hf_papers:
+        normalized = normalize_arxiv_id(hf.arxiv_id)
+        if normalized in known_ids:
+            trending_existing.append(hf)
+        else:
+            new_papers.append(
+                Paper(
+                    paper_id=f"hf_{hf.arxiv_id}",
+                    title=hf.title,
+                    authors=hf.authors,
+                    abstract=hf.abstract,
+                    url=hf.url,
+                    published=hf.published,
+                    source="huggingface",
+                    pdf_path=None,
+                )
+            )
+
+    logger.info(
+        "HuggingFace reconciliation: %d new papers, %d trending (already in arXiv set).",
+        len(new_papers),
+        len(trending_existing),
+    )
+    return new_papers, trending_existing
