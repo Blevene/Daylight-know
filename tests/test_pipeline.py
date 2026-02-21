@@ -47,6 +47,8 @@ def test_run_no_papers(mock_fetch):
 
 
 @patch("digest_pipeline.pipeline.send_digest")
+@patch("digest_pipeline.pipeline.generate_critiques", return_value="Critiques text")
+@patch("digest_pipeline.pipeline.extract_implications", return_value="Implications text")
 @patch("digest_pipeline.pipeline.summarize", return_value="Summary")
 @patch("digest_pipeline.pipeline.store_chunks", return_value=[])
 @patch("digest_pipeline.pipeline.chunk_text", return_value=[])
@@ -55,7 +57,10 @@ def test_run_no_papers(mock_fetch):
     return_value=ExtractionResult(arxiv_id="2401.00001", text="content", parseable=True),
 )
 @patch("digest_pipeline.pipeline.fetch_papers")
-def test_run_full_pipeline(mock_fetch, mock_extract, mock_chunk, mock_store, mock_summarize, mock_email):
+def test_run_full_pipeline(
+    mock_fetch, mock_extract, mock_chunk, mock_store,
+    mock_summarize, mock_implications, mock_critiques, mock_email,
+):
     paper = _make_paper()
     mock_fetch.return_value = [paper]
     settings = _make_settings()
@@ -67,7 +72,44 @@ def test_run_full_pipeline(mock_fetch, mock_extract, mock_chunk, mock_store, moc
     mock_chunk.assert_called_once_with("content")
     mock_store.assert_called_once()
     mock_summarize.assert_called_once()
+    mock_implications.assert_called_once()
+    mock_critiques.assert_called_once()
     mock_email.assert_called_once()
+    # Verify implications and critiques are passed to send_digest
+    email_kwargs = mock_email.call_args
+    assert email_kwargs.kwargs["implications"] == "Implications text"
+    assert email_kwargs.kwargs["critiques"] == "Critiques text"
+
+
+@patch("digest_pipeline.pipeline.send_digest")
+@patch("digest_pipeline.pipeline.generate_critiques")
+@patch("digest_pipeline.pipeline.extract_implications")
+@patch("digest_pipeline.pipeline.summarize", return_value="Summary")
+@patch("digest_pipeline.pipeline.store_chunks", return_value=[])
+@patch("digest_pipeline.pipeline.chunk_text", return_value=[])
+@patch(
+    "digest_pipeline.pipeline.extract_text",
+    return_value=ExtractionResult(arxiv_id="2401.00001", text="content", parseable=True),
+)
+@patch("digest_pipeline.pipeline.fetch_papers")
+def test_run_postprocessing_disabled(
+    mock_fetch, mock_extract, mock_chunk, mock_store,
+    mock_summarize, mock_implications, mock_critiques, mock_email,
+):
+    paper = _make_paper()
+    mock_fetch.return_value = [paper]
+    settings = _make_settings(
+        postprocessing_implications=False,
+        postprocessing_critiques=False,
+    )
+
+    run(settings)
+
+    mock_implications.assert_not_called()
+    mock_critiques.assert_not_called()
+    email_kwargs = mock_email.call_args
+    assert email_kwargs.kwargs["implications"] == ""
+    assert email_kwargs.kwargs["critiques"] == ""
 
 
 @patch("digest_pipeline.pipeline.store_unparseable")

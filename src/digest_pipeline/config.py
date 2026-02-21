@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     github_languages: list[str] = Field(default=["python"])
     github_top_n: int = Field(default=5)
 
+    # ── Post-processing (optional) ──────────────────────────────
+    postprocessing_implications: bool = Field(default=True)
+    postprocessing_critiques: bool = Field(default=True)
+
     # ── PDF download retry ──────────────────────────────────────
     pdf_download_max_retries: int = Field(default=3)
 

@@ -24,6 +24,7 @@ from digest_pipeline.emailer import send_digest
 from digest_pipeline.extractor import extract_text
 from digest_pipeline.fetcher import fetch_papers
 from digest_pipeline.github_trending import fetch_trending, format_for_prompt
+from digest_pipeline.postprocessor import extract_implications, generate_critiques
 from digest_pipeline.summarizer import summarize
 from digest_pipeline.vectorstore import VectorStoreError, store_chunks, store_unparseable
 
@@ -80,8 +81,24 @@ def run(settings: Settings | None = None) -> None:
     # ── Step 6: LLM summarization ───────────────────────────────
     summary = summarize(processed_papers, settings, github_section=github_section)
 
+    # ── Step 6b: Post-processing (implications & critiques) ───
+    implications = ""
+    if settings.postprocessing_implications:
+        implications = extract_implications(processed_papers, settings)
+
+    critiques = ""
+    if settings.postprocessing_critiques:
+        critiques = generate_critiques(processed_papers, settings)
+
     # ── Step 7: Email dispatch ──────────────────────────────────
-    send_digest(summary, len(processed_papers), date_str, settings)
+    send_digest(
+        summary,
+        len(processed_papers),
+        date_str,
+        settings,
+        implications=implications,
+        critiques=critiques,
+    )
 
     logger.info("Pipeline run complete. %d paper(s) in digest.", len(processed_papers))
 
