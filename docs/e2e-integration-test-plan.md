@@ -4,7 +4,7 @@
 
 The existing test suite (9 test files, ~35 test functions) relies **exclusively** on
 `unittest.mock` patches. Every external boundary — arXiv API, PDF downloads,
-PyMuPDF, Chonkie, ChromaDB, OpenAI, SMTP — is mocked out. Two modules
+PyMuPDF, Chonkie, ChromaDB, litellm (LLM), SMTP — is mocked out. Two modules
 (`chunker` and `vectorstore`) have **zero test coverage** of any kind.
 
 This document catalogues every unverified code path and proposes a phased plan
@@ -27,8 +27,8 @@ to add integration and end-to-end tests that exercise real behaviour.
 |---|---|---|
 | `fetcher.py` | `arxiv.Client`, `arxiv.Search`, `requests.get` | Real arXiv query construction, real HTTP PDF download, retry backoff timing, actual `Paper` dataclass population from live API responses. |
 | `extractor.py` | `fitz.open` | Real PyMuPDF extraction on an actual PDF, multi-page concatenation, handling of scanned/image-only PDFs. |
-| `summarizer.py` | `OpenAI` client | Real LLM API call, rate-limit backoff loop, `max_tokens` enforcement, `None` content handling under real conditions. |
-| `postprocessor.py` | `OpenAI` client | Real LLM API call, both system prompts with real model, rate-limit retry logic (5 attempts then re-raise). |
+| `summarizer.py` | `litellm.completion` | Real LLM API call via litellm, rate-limit backoff loop, `max_tokens` enforcement, `None` content handling under real conditions, multi-provider model string routing. |
+| `postprocessor.py` | `litellm.completion` | Real LLM API call via litellm, both system prompts with real model, rate-limit retry logic (5 attempts then re-raise). |
 | `emailer.py` | `smtplib.SMTP_SSL` | Real SMTP connection, TLS handshake, authentication, actual email delivery. |
 | `github_trending.py` | `requests.get` | Real GitHub Search API call, `RequestException` from real network failure, pagination behaviour. |
 | `pipeline.py` | All sub-modules | Full end-to-end flow, `main()` CLI entry point, `sys.exit(1)` on `VectorStoreError`, mixed parseable/unparseable papers. |
@@ -80,18 +80,19 @@ to add integration and end-to-end tests that exercise real behaviour.
 
 | # | Code Path | Lines | Description |
 |---|---|---|---|
-| S-1 | Real LLM call | 45-82 | Against a local/stub OpenAI-compatible server, send a real request and verify a non-empty string is returned. |
-| S-2 | Rate-limit backoff | 59-80 | Stub server returns 429 twice then 200 — verify the function retries and eventually succeeds. |
-| S-3 | Rate-limit exhaustion | 59-80 | Stub server returns 429 for all 5 attempts — verify `RateLimitError` is re-raised. |
-| S-4 | `max_tokens` enforcement | 61 | Verify the `max_tokens` kwarg passed to the API matches `settings.llm_max_tokens`. |
+| S-1 | Real LLM call via litellm | 55-82 | Against a local/stub OpenAI-compatible server, call `litellm.completion()` with `settings.llm_model` and verify a non-empty string is returned. |
+| S-2 | Rate-limit backoff | 59-80 | Stub server returns 429 twice then 200 — verify the function retries and eventually succeeds (`litellm.RateLimitError`). |
+| S-3 | Rate-limit exhaustion | 59-80 | Stub server returns 429 for all 5 attempts — verify `litellm.RateLimitError` is re-raised. |
+| S-4 | `max_tokens` enforcement | 61 | Verify the `max_tokens` kwarg passed to `litellm.completion()` matches `settings.llm_max_tokens`. |
 | S-5 | `None` content response | 69 | Stub server returns `choices[0].message.content = null` — verify empty string `""` returned. |
+| S-6 | Multi-provider model routing | 55-82 | Verify `litellm.completion()` receives the full `provider/model` string (e.g. `openai/gpt-4o-mini`, `anthropic/claude-sonnet-4-20250514`) and `api_base` is passed correctly. |
 
 ### 3.6 `postprocessor.py` — mock-only coverage
 
 | # | Code Path | Lines | Description |
 |---|---|---|---|
-| P-1 | `_llm_call()` real request | 55-89 | Same as S-1 but verifying both `IMPLICATIONS_SYSTEM_PROMPT` and `CRITIQUES_SYSTEM_PROMPT` are sent correctly. |
-| P-2 | Rate-limit backoff | 66-87 | Same pattern as S-2/S-3 for the shared `_llm_call()` retry loop. |
+| P-1 | `_llm_call()` real request via litellm | 62-89 | Same as S-1 but verifying both `IMPLICATIONS_SYSTEM_PROMPT` and `CRITIQUES_SYSTEM_PROMPT` are sent correctly via `litellm.completion()`. |
+| P-2 | Rate-limit backoff | 66-87 | Same pattern as S-2/S-3 for the shared `_llm_call()` retry loop using `litellm.RateLimitError`. |
 
 ### 3.7 `emailer.py` — partially verified
 
@@ -126,6 +127,8 @@ to add integration and end-to-end tests that exercise real behaviour.
 | CFG-1 | `.env` file loading | 18-22 | Create a temp `.env` file with overrides, point `Settings` at it, verify values are read. |
 | CFG-2 | Environment variable override | 11-60 | Set `os.environ["ARXIV_MAX_RESULTS"] = "10"`, create `Settings`, verify `arxiv_max_results == 10`. |
 | CFG-3 | List parsing | 25 | Set `ARXIV_TOPICS=cs.AI,cs.CL,stat.ML` via env, verify the list is `["cs.AI", "cs.CL", "stat.ML"]`. |
+| CFG-4 | litellm model string | 30 | Set `LLM_MODEL=anthropic/claude-sonnet-4-20250514` via env, verify `settings.llm_model` matches. |
+| CFG-5 | `llm_api_base` nullable | 32 | Verify `llm_api_base` defaults to `None` when unset, and accepts a URL string when set. |
 
 ---
 
@@ -159,7 +162,10 @@ For summarizer/postprocessor integration tests without hitting a real LLM:
 - Use a lightweight ASGI app (e.g. `fastapi` or plain `http.server`) that serves
   OpenAI-compatible `/v1/chat/completions` responses.
 - Configurable to return 429 (rate limit) for backoff tests.
-- Point `settings.llm_base_url` at `http://localhost:<port>`.
+- Point `settings.llm_api_base` at `http://localhost:<port>/v1` and use
+  `settings.llm_model = "openai/test-model"` (litellm routes via the provider prefix).
+- litellm's `completion()` function accepts `api_base` to override the endpoint,
+  making it straightforward to redirect all LLM calls to the stub.
 
 ### 4.4 Test Directory Structure
 
@@ -256,7 +262,7 @@ markers = [
 
 ### Phase 3: Stub-Server Tests for LLM Modules (Priority: High)
 
-**Goal:** Verify summarizer and postprocessor against a local OpenAI-compatible stub.
+**Goal:** Verify summarizer and postprocessor via litellm against a local OpenAI-compatible stub.
 
 | Test ID | Module | Test | Marker |
 |---|---|---|---|
@@ -264,8 +270,9 @@ markers = [
 | S-2 | summarizer | Rate-limit retry (429 → 200) | `integration` |
 | S-3 | summarizer | Rate-limit exhaustion (5× 429 → re-raise) | `integration` |
 | S-5 | summarizer | `null` content → empty string | `integration` |
-| P-1 | postprocessor | Both prompts via stub server | `integration` |
-| P-2 | postprocessor | Rate-limit retry via stub server | `integration` |
+| S-6 | summarizer | Multi-provider model routing via litellm | `integration` |
+| P-1 | postprocessor | Both prompts via litellm stub server | `integration` |
+| P-2 | postprocessor | Rate-limit retry via litellm stub server | `integration` |
 
 ### Phase 4: End-to-End Pipeline Tests (Priority: High)
 
@@ -273,7 +280,7 @@ markers = [
 
 | Test ID | Test | Marker |
 |---|---|---|
-| PL-1 | Full dry-run E2E: fixture PDF → Chonkie → ChromaDB → stub LLM → console output | `e2e` |
+| PL-1 | Full dry-run E2E: fixture PDF → Chonkie → ChromaDB → litellm (stub server) → console output | `e2e` |
 | PL-2 | Mixed parseable + unparseable papers | `e2e` |
 | PL-3 | `VectorStoreError` causes `sys.exit(1)` | `e2e` |
 | PL-4 | CLI `main()` with `--dry-run --topics cs.CL -v` | `e2e` |
@@ -313,7 +320,8 @@ markers = [
 │                                           ▼                 │
 │                                  ┌────────────────────┐    │
 │                                  │  summarize()       │    │
-│                                  │  (stub LLM server) │    │
+│                                  │  (litellm → stub   │    │
+│                                  │   LLM server)      │    │
 │                                  └────────┬───────────┘    │
 │                                           │                 │
 │                                           ▼                 │
@@ -326,8 +334,8 @@ markers = [
 ```
 
 **Key principle:** Real local dependencies (PyMuPDF, Chonkie, ChromaDB), stubbed
-remote services (LLM API, optionally SMTP). Network tests are isolated behind
-the `@pytest.mark.network` marker.
+remote services (LLM via litellm pointed at a stub server, optionally SMTP).
+Network tests are isolated behind the `@pytest.mark.network` marker.
 
 ---
 
@@ -355,7 +363,8 @@ def test_settings(tmp_path) -> Settings:
     return Settings(
         _env_file=None,
         llm_api_key="test-key",
-        llm_base_url="http://localhost:8080/v1",  # stub server
+        llm_model="openai/test-model",
+        llm_api_base="http://localhost:8080/v1",  # stub server
         chroma_persist_dir=tmp_path / "chromadb",
         chroma_collection="test_collection",
         smtp_user="test",
@@ -429,6 +438,6 @@ Every EARS requirement from the design document mapped to its proposed test:
 | 2.4-1 | Skip paper after 3 PDF failures | Mocked (`test_fetcher.py`) | F-3 |
 | 2.4-2 | Flag unparseable documents | Mocked (`test_extractor.py`, `test_pipeline.py`) | E-3, V-5, PL-2 |
 | 2.4-3 | Halt on ChromaDB failure | Mocked (`test_pipeline.py`) | V-2, PL-3 |
-| 2.4-4 | LLM rate-limit backoff | **None** | S-2, S-3, P-2 |
+| 2.4-4 | LLM rate-limit backoff (litellm) | **None** | S-2, S-3, P-2 |
 | 2.5-1 | GitHub trending query | Mocked (`test_github_trending.py`) | G-1 |
 | 2.5-2 | Append repos to LLM prompt | `test_summarizer.py` (pure logic) | PL-5 |
