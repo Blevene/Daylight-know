@@ -14,6 +14,7 @@ from aiosmtpd.handlers import Message
 
 from digest_pipeline.config import Settings
 from digest_pipeline.emailer import _build_email
+from digest_pipeline.pipeline import PaperAnalysis
 
 
 class _CapturingSMTPHandler(Message):
@@ -60,14 +61,18 @@ class TestEmailerIntegration:
 
             import smtplib
 
-            msg = _build_email(
-                "Test summary content",
-                5,
-                "2025-01-15",
-                settings,
-                implications="Test implication",
-                critiques="Test critique",
-            )
+            papers = [
+                PaperAnalysis(
+                    title="Test Paper",
+                    url="https://arxiv.org/abs/2401.00001",
+                    authors=["Alice", "Bob"],
+                    summary="Test summary content",
+                    implications="Test implication",
+                    critique="Test critique",
+                ),
+            ]
+
+            msg = _build_email(papers, "2025-01-15", settings)
 
             with smtplib.SMTP("127.0.0.1", port) as server:
                 server.send_message(msg)
@@ -95,23 +100,35 @@ class TestEmailerIntegration:
         )
 
         # Special characters in summary
-        msg = _build_email(
-            'Summary with <html> & "quotes" and unicode: café résumé',
-            1,
-            "2025-01-15",
-            settings,
-        )
+        papers = [PaperAnalysis(
+            title="Test Paper",
+            url="https://arxiv.org/abs/1",
+            authors=["Alice"],
+            summary='Summary with <html> & "quotes" and unicode: café résumé',
+        )]
+        msg = _build_email(papers, "2025-01-15", settings)
         payloads = msg.get_payload()
         plain_body = payloads[0].get_payload(decode=True).decode()
         assert "café" in plain_body
 
         # Empty implications and critiques (sections should be omitted)
-        msg2 = _build_email("Summary", 1, "2025-01-15", settings, implications="", critiques="")
+        papers2 = [PaperAnalysis(
+            title="Test Paper",
+            url="https://arxiv.org/abs/1",
+            authors=["Alice"],
+            summary="Summary",
+        )]
+        msg2 = _build_email(papers2, "2025-01-15", settings)
         html_body = msg2.get_payload()[1].get_payload(decode=True).decode()
         assert "Practical Implications" not in html_body
 
         # Very long summary
-        long_summary = "Word " * 5000
-        msg3 = _build_email(long_summary, 1, "2025-01-15", settings)
+        papers3 = [PaperAnalysis(
+            title="Test Paper",
+            url="https://arxiv.org/abs/1",
+            authors=["Alice"],
+            summary="Word " * 5000,
+        )]
+        msg3 = _build_email(papers3, "2025-01-15", settings)
         plain_body3 = msg3.get_payload()[0].get_payload(decode=True).decode()
         assert len(plain_body3) > 20000

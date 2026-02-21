@@ -7,8 +7,9 @@ Ties together all modules to execute the full daily digest workflow:
   3. Chunk text semantically (Chonkie)
   4. Store chunks + embeddings in ChromaDB
   5. (Optional) Fetch GitHub trending repos
-  6. Summarize via LLM
-  7. Send email digest (or print in dry-run mode)
+  6. Summarize via LLM (per-paper JSON)
+  7. Post-process: implications & critiques (per-paper JSON)
+  8. Assemble per-paper analyses and send email digest
 """
 
 from __future__ import annotations
@@ -16,19 +17,53 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from digest_pipeline.chunker import chunk_text
 from digest_pipeline.config import Settings, get_settings
 from digest_pipeline.emailer import send_digest
 from digest_pipeline.extractor import extract_text
-from digest_pipeline.fetcher import fetch_papers
+from digest_pipeline.fetcher import Paper, fetch_papers
 from digest_pipeline.github_trending import fetch_trending, format_for_prompt
 from digest_pipeline.postprocessor import extract_implications, generate_critiques
 from digest_pipeline.summarizer import summarize
 from digest_pipeline.vectorstore import VectorStoreError, store_chunks, store_unparseable
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PaperAnalysis:
+    """Per-paper grouped analysis for the digest email."""
+
+    title: str
+    url: str
+    authors: list[str] = field(default_factory=list)
+    summary: str = ""
+    implications: str = ""
+    critique: str = ""
+
+
+def _build_analyses(
+    papers: list[Paper],
+    summaries: dict[str, str],
+    implications: dict[str, str],
+    critiques: dict[str, str],
+) -> list[PaperAnalysis]:
+    """Zip LLM results into per-paper PaperAnalysis objects."""
+    analyses: list[PaperAnalysis] = []
+    for i, paper in enumerate(papers, 1):
+        key = f"paper_{i}"
+        analyses.append(PaperAnalysis(
+            title=paper.title,
+            url=paper.url,
+            authors=paper.authors,
+            summary=summaries.get(key, ""),
+            implications=implications.get(key, ""),
+            critique=critiques.get(key, ""),
+        ))
+    return analyses
 
 
 def run(settings: Settings | None = None) -> None:
@@ -78,26 +113,25 @@ def run(settings: Settings | None = None) -> None:
         trending = fetch_trending(settings)
         github_section = format_for_prompt(trending)
 
-    # ── Step 6: LLM summarization ───────────────────────────────
-    summary = summarize(processed_papers, settings, github_section=github_section)
+    # ── Step 6: LLM summarization (per-paper JSON) ──────────────
+    summaries = summarize(processed_papers, settings, github_section=github_section)
 
-    # ── Step 6b: Post-processing (implications & critiques) ───
-    implications = ""
+    # ── Step 7: Post-processing (per-paper JSON) ────────────────
+    implications: dict[str, str] = {}
     if settings.postprocessing_implications:
         implications = extract_implications(processed_papers, settings)
 
-    critiques = ""
+    critiques: dict[str, str] = {}
     if settings.postprocessing_critiques:
         critiques = generate_critiques(processed_papers, settings)
 
-    # ── Step 7: Email dispatch ──────────────────────────────────
+    # ── Step 8: Assemble & send ─────────────────────────────────
+    analyses = _build_analyses(processed_papers, summaries, implications, critiques)
+
     send_digest(
-        summary,
-        len(processed_papers),
+        analyses,
         date_str,
         settings,
-        implications=implications,
-        critiques=critiques,
     )
 
     logger.info("Pipeline run complete. %d paper(s) in digest.", len(processed_papers))

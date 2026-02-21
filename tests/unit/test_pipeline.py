@@ -1,5 +1,6 @@
 """Tests for the pipeline orchestrator."""
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -7,7 +8,7 @@ from unittest.mock import MagicMock, patch
 from digest_pipeline.config import Settings
 from digest_pipeline.extractor import ExtractionResult
 from digest_pipeline.fetcher import Paper
-from digest_pipeline.pipeline import run
+from digest_pipeline.pipeline import PaperAnalysis, _build_analyses, run
 
 
 def _make_settings(**overrides) -> Settings:
@@ -39,6 +40,28 @@ def _make_paper(**overrides) -> Paper:
     return Paper(**defaults)
 
 
+def test_build_analyses():
+    papers = [
+        _make_paper(title="Paper 1", url="http://1", authors=["A"]),
+        _make_paper(title="Paper 2", url="http://2", authors=["B"]),
+    ]
+    summaries = {"paper_1": "Sum 1", "paper_2": "Sum 2"}
+    implications = {"paper_1": "Impl 1"}
+    critiques = {"paper_2": "Crit 2"}
+
+    analyses = _build_analyses(papers, summaries, implications, critiques)
+
+    assert len(analyses) == 2
+    assert analyses[0].title == "Paper 1"
+    assert analyses[0].summary == "Sum 1"
+    assert analyses[0].implications == "Impl 1"
+    assert analyses[0].critique == ""
+    assert analyses[1].title == "Paper 2"
+    assert analyses[1].summary == "Sum 2"
+    assert analyses[1].implications == ""
+    assert analyses[1].critique == "Crit 2"
+
+
 @patch("digest_pipeline.pipeline.fetch_papers", return_value=[])
 def test_run_no_papers(mock_fetch):
     """Pipeline exits gracefully when no papers are found."""
@@ -47,9 +70,9 @@ def test_run_no_papers(mock_fetch):
 
 
 @patch("digest_pipeline.pipeline.send_digest")
-@patch("digest_pipeline.pipeline.generate_critiques", return_value="Critiques text")
-@patch("digest_pipeline.pipeline.extract_implications", return_value="Implications text")
-@patch("digest_pipeline.pipeline.summarize", return_value="Summary")
+@patch("digest_pipeline.pipeline.generate_critiques", return_value={"paper_1": "Critiques text"})
+@patch("digest_pipeline.pipeline.extract_implications", return_value={"paper_1": "Implications text"})
+@patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "Summary"})
 @patch("digest_pipeline.pipeline.store_chunks", return_value=[])
 @patch("digest_pipeline.pipeline.chunk_text", return_value=[])
 @patch(
@@ -75,16 +98,22 @@ def test_run_full_pipeline(
     mock_implications.assert_called_once()
     mock_critiques.assert_called_once()
     mock_email.assert_called_once()
-    # Verify implications and critiques are passed to send_digest
-    email_kwargs = mock_email.call_args
-    assert email_kwargs.kwargs["implications"] == "Implications text"
-    assert email_kwargs.kwargs["critiques"] == "Critiques text"
+    # Verify PaperAnalysis objects are passed to send_digest
+    call_args = mock_email.call_args
+    analyses = call_args.args[0]
+    assert len(analyses) == 1
+    assert isinstance(analyses[0], PaperAnalysis)
+    assert analyses[0].summary == "Summary"
+    assert analyses[0].implications == "Implications text"
+    assert analyses[0].critique == "Critiques text"
+    assert analyses[0].title == "Test Paper"
+    assert analyses[0].url == "https://arxiv.org/abs/2401.00001"
 
 
 @patch("digest_pipeline.pipeline.send_digest")
 @patch("digest_pipeline.pipeline.generate_critiques")
 @patch("digest_pipeline.pipeline.extract_implications")
-@patch("digest_pipeline.pipeline.summarize", return_value="Summary")
+@patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "Summary"})
 @patch("digest_pipeline.pipeline.store_chunks", return_value=[])
 @patch("digest_pipeline.pipeline.chunk_text", return_value=[])
 @patch(
@@ -107,9 +136,10 @@ def test_run_postprocessing_disabled(
 
     mock_implications.assert_not_called()
     mock_critiques.assert_not_called()
-    email_kwargs = mock_email.call_args
-    assert email_kwargs.kwargs["implications"] == ""
-    assert email_kwargs.kwargs["critiques"] == ""
+    call_args = mock_email.call_args
+    analyses = call_args.args[0]
+    assert analyses[0].implications == ""
+    assert analyses[0].critique == ""
 
 
 @patch("digest_pipeline.pipeline.store_unparseable")

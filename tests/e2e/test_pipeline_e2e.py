@@ -25,6 +25,8 @@ class TestPipelineE2E:
             run(e2e_settings)
 
         captured = capsys.readouterr()
+        # Per-paper output: paper title and stub summary
+        assert "Test Paper" in captured.out
         assert "E2E stub summary" in captured.out
 
     def test_mixed_parseable_unparseable(self, e2e_settings, make_paper, sample_pdf, corrupt_file, capsys):

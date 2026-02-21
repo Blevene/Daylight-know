@@ -3,6 +3,8 @@
 Test IDs: P-1, P-2
 """
 
+import json
+
 import litellm
 import pytest
 
@@ -39,21 +41,23 @@ class TestPostprocessorIntegration:
 
     def test_both_prompts_sent_correctly(self, make_paper):
         """P-1: Both IMPLICATIONS and CRITIQUES system prompts are sent via litellm."""
-        with run_stub_server(StubConfig(response_content="Implications result.")) as srv:
+        json_impl = json.dumps({"paper_1": "Implications result."})
+        with run_stub_server(StubConfig(response_content=json_impl)) as srv:
             settings = _make_settings(srv.port)
             impl_result = extract_implications([make_paper()], settings)
 
-            assert impl_result == "Implications result."
+            assert impl_result == {"paper_1": "Implications result."}
             assert len(srv.requests) == 1
             messages = srv.requests[0]["messages"]
             assert messages[0]["role"] == "system"
             assert "actionable insights" in messages[0]["content"]
 
-        with run_stub_server(StubConfig(response_content="Critiques result.")) as srv:
+        json_crit = json.dumps({"paper_1": "Critiques result."})
+        with run_stub_server(StubConfig(response_content=json_crit)) as srv:
             settings = _make_settings(srv.port)
             crit_result = generate_critiques([make_paper()], settings)
 
-            assert crit_result == "Critiques result."
+            assert crit_result == {"paper_1": "Critiques result."}
             assert len(srv.requests) == 1
             messages = srv.requests[0]["messages"]
             assert messages[0]["role"] == "system"
@@ -61,7 +65,8 @@ class TestPostprocessorIntegration:
 
     def test_rate_limit_retry(self, make_paper):
         """P-2: Rate-limit backoff works for _llm_call (shared by both functions)."""
-        config = StubConfig(rate_limit_count=1, response_content="After retry.")
+        json_response = json.dumps({"paper_1": "After retry."})
+        config = StubConfig(rate_limit_count=1, response_content=json_response)
         with run_stub_server(config) as srv:
             settings = _make_settings(srv.port)
             # Disable litellm's internal retries so the postprocessor's own
@@ -73,4 +78,4 @@ class TestPostprocessorIntegration:
             finally:
                 litellm.num_retries = old_retries
 
-            assert result == "After retry."
+            assert result == {"paper_1": "After retry."}

@@ -1,115 +1,95 @@
 """Tests for the post-processing module (implications & critiques)."""
 
-from datetime import datetime, timezone
+import json
 from unittest.mock import MagicMock, patch
 
-from digest_pipeline.config import Settings
-from digest_pipeline.fetcher import Paper
+from tests.conftest import make_paper, make_settings
+
 from digest_pipeline.postprocessor import (
     CRITIQUES_SYSTEM_PROMPT,
     IMPLICATIONS_SYSTEM_PROMPT,
-    _build_user_prompt,
     extract_implications,
     generate_critiques,
 )
 
 
-def _make_paper(**overrides) -> Paper:
-    defaults = dict(
-        arxiv_id="2401.00001",
-        title="Test Paper",
-        authors=["Alice", "Bob"],
-        abstract="This paper explores testing.",
-        url="https://arxiv.org/abs/2401.00001",
-        published=datetime(2025, 1, 15, tzinfo=timezone.utc),
-        pdf_path=None,
-    )
-    defaults.update(overrides)
-    return Paper(**defaults)
-
-
-def _make_settings(**overrides) -> Settings:
-    defaults = dict(
-        _env_file=None,
-        llm_api_key="test-key",
-        smtp_user="u",
-        smtp_password="p",
-        email_from="a@b.com",
-        email_to="c@d.com",
-    )
-    defaults.update(overrides)
-    return Settings(**defaults)
-
-
-def test_build_user_prompt_single_paper():
-    papers = [_make_paper()]
-    prompt = _build_user_prompt(papers)
-    assert "Test Paper" in prompt
-    assert "Alice, Bob" in prompt
-    assert "This paper explores testing." in prompt
-
-
-def test_build_user_prompt_multiple_papers():
-    papers = [_make_paper(), _make_paper(title="Second Paper")]
-    prompt = _build_user_prompt(papers)
-    assert "Test Paper" in prompt
-    assert "Second Paper" in prompt
-    assert "---" in prompt
-
-
-@patch("digest_pipeline.postprocessor.litellm.completion")
+@patch("digest_pipeline.llm_utils.litellm.completion")
 def test_extract_implications_success(mock_completion):
     mock_choice = MagicMock()
-    mock_choice.message.content = "Practitioners can apply these findings by..."
+    mock_choice.message.content = json.dumps({"paper_1": "Practitioners can apply..."})
     mock_completion.return_value = MagicMock(choices=[mock_choice])
 
-    settings = _make_settings()
-    result = extract_implications([_make_paper()], settings)
+    result = extract_implications([make_paper()], make_settings())
 
-    assert result == "Practitioners can apply these findings by..."
+    assert result == {"paper_1": "Practitioners can apply..."}
     mock_completion.assert_called_once()
 
     call_kwargs = mock_completion.call_args
     messages = call_kwargs.kwargs["messages"]
     assert messages[0]["content"] == IMPLICATIONS_SYSTEM_PROMPT
+    assert "response_format" in call_kwargs.kwargs
 
 
-@patch("digest_pipeline.postprocessor.litellm.completion")
+@patch("digest_pipeline.llm_utils.litellm.completion")
 def test_generate_critiques_success(mock_completion):
     mock_choice = MagicMock()
-    mock_choice.message.content = "The methodology has several strengths..."
+    mock_choice.message.content = json.dumps({"paper_1": "The methodology has strengths..."})
     mock_completion.return_value = MagicMock(choices=[mock_choice])
 
-    settings = _make_settings()
-    result = generate_critiques([_make_paper()], settings)
+    result = generate_critiques([make_paper()], make_settings())
 
-    assert result == "The methodology has several strengths..."
+    assert result == {"paper_1": "The methodology has strengths..."}
     mock_completion.assert_called_once()
 
     call_kwargs = mock_completion.call_args
     messages = call_kwargs.kwargs["messages"]
     assert messages[0]["content"] == CRITIQUES_SYSTEM_PROMPT
+    assert "response_format" in call_kwargs.kwargs
 
 
-@patch("digest_pipeline.postprocessor.litellm.completion")
+@patch("digest_pipeline.llm_utils.litellm.completion")
 def test_llm_call_respects_max_tokens(mock_completion):
     mock_choice = MagicMock()
-    mock_choice.message.content = "result"
+    mock_choice.message.content = json.dumps({"paper_1": "result"})
     mock_completion.return_value = MagicMock(choices=[mock_choice])
 
-    settings = _make_settings(llm_max_tokens=2048)
-    extract_implications([_make_paper()], settings)
+    extract_implications([make_paper()], make_settings(llm_max_tokens=2048))
 
     call_kwargs = mock_completion.call_args
     assert call_kwargs.kwargs["max_tokens"] == 2048
 
 
-@patch("digest_pipeline.postprocessor.litellm.completion")
-def test_llm_call_empty_content_returns_empty_string(mock_completion):
+@patch("digest_pipeline.llm_utils.litellm.completion")
+def test_llm_call_empty_content_returns_empty_dict(mock_completion):
     mock_choice = MagicMock()
     mock_choice.message.content = None
     mock_completion.return_value = MagicMock(choices=[mock_choice])
 
-    settings = _make_settings()
-    result = generate_critiques([_make_paper()], settings)
-    assert result == ""
+    result = generate_critiques([make_paper()], make_settings())
+    assert result == {}
+
+
+@patch("digest_pipeline.llm_utils.litellm.completion")
+def test_llm_call_malformed_json_returns_empty_dict(mock_completion):
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Not JSON at all."
+    mock_completion.return_value = MagicMock(choices=[mock_choice])
+
+    result = extract_implications([make_paper()], make_settings())
+    assert result == {}
+
+
+@patch("digest_pipeline.llm_utils.litellm.completion")
+def test_schema_has_explicit_keys(mock_completion):
+    mock_choice = MagicMock()
+    mock_choice.message.content = json.dumps({"paper_1": "a", "paper_2": "b"})
+    mock_completion.return_value = MagicMock(choices=[mock_choice])
+
+    papers = [make_paper(), make_paper(title="Second")]
+    extract_implications(papers, make_settings())
+
+    rf = mock_completion.call_args.kwargs["response_format"]
+    schema = rf["json_schema"]["schema"]
+    assert schema["additionalProperties"] is False
+    assert "paper_1" in schema["properties"]
+    assert "paper_2" in schema["properties"]

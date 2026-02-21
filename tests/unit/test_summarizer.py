@@ -1,60 +1,92 @@
 """Tests for the LLM summarization module."""
 
-from datetime import datetime, timezone
+import json
 from unittest.mock import MagicMock, patch
 
-from digest_pipeline.config import Settings
-from digest_pipeline.fetcher import Paper
-from digest_pipeline.summarizer import _build_user_prompt, summarize
+from tests.conftest import make_paper, make_settings
+
+from digest_pipeline.summarizer import summarize
 
 
-def _make_paper(**overrides) -> Paper:
-    defaults = dict(
-        arxiv_id="2401.00001",
-        title="Test Paper",
-        authors=["Alice", "Bob"],
-        abstract="This paper explores testing.",
-        url="https://arxiv.org/abs/2401.00001",
-        published=datetime(2025, 1, 15, tzinfo=timezone.utc),
-        pdf_path=None,
-    )
-    defaults.update(overrides)
-    return Paper(**defaults)
-
-
-def _make_settings(**overrides) -> Settings:
-    defaults = dict(
-        _env_file=None,
-        llm_api_key="test-key",
-        smtp_user="u",
-        smtp_password="p",
-        email_from="a@b.com",
-        email_to="c@d.com",
-    )
-    defaults.update(overrides)
-    return Settings(**defaults)
-
-
-def test_build_user_prompt():
-    papers = [_make_paper(), _make_paper(title="Second Paper")]
-    prompt = _build_user_prompt(papers)
-    assert "Test Paper" in prompt
-    assert "Second Paper" in prompt
-
-
-def test_build_user_prompt_with_github():
-    papers = [_make_paper()]
-    prompt = _build_user_prompt(papers, github_section="Repo1\nRepo2")
-    assert "Trending GitHub Repositories" in prompt
-
-
-@patch("digest_pipeline.summarizer.litellm.completion")
+@patch("digest_pipeline.llm_utils.litellm.completion")
 def test_summarize_success(mock_completion):
     mock_choice = MagicMock()
-    mock_choice.message.content = "This is a summary."
+    mock_choice.message.content = json.dumps({"paper_1": "This is a summary."})
     mock_completion.return_value = MagicMock(choices=[mock_choice])
 
-    settings = _make_settings()
-    result = summarize([_make_paper()], settings)
-    assert result == "This is a summary."
+    result = summarize([make_paper()], make_settings())
+    assert result == {"paper_1": "This is a summary."}
     mock_completion.assert_called_once()
+
+    call_kwargs = mock_completion.call_args
+    assert "response_format" in call_kwargs.kwargs
+    rf = call_kwargs.kwargs["response_format"]
+    assert rf["type"] == "json_schema"
+    # Schema should have explicit paper_1 key
+    schema = rf["json_schema"]["schema"]
+    assert "paper_1" in schema["properties"]
+    assert schema["additionalProperties"] is False
+
+
+@patch("digest_pipeline.llm_utils.litellm.completion")
+def test_summarize_with_github_section(mock_completion):
+    mock_choice = MagicMock()
+    mock_choice.message.content = json.dumps({"paper_1": "Summary."})
+    mock_completion.return_value = MagicMock(choices=[mock_choice])
+
+    summarize([make_paper()], make_settings(), github_section="Repo1\nRepo2")
+
+    call_kwargs = mock_completion.call_args
+    user_msg = call_kwargs.kwargs["messages"][1]["content"]
+    assert "Trending GitHub Repositories" in user_msg
+
+
+@patch("digest_pipeline.llm_utils.litellm.completion")
+def test_summarize_empty_content_returns_empty_dict(mock_completion):
+    mock_choice = MagicMock()
+    mock_choice.message.content = None
+    mock_completion.return_value = MagicMock(choices=[mock_choice])
+
+    result = summarize([make_paper()], make_settings())
+    assert result == {}
+
+
+@patch("digest_pipeline.llm_utils.litellm.completion")
+def test_summarize_malformed_json_returns_empty_dict(mock_completion):
+    mock_choice = MagicMock()
+    mock_choice.message.content = "This is not valid JSON at all"
+    mock_completion.return_value = MagicMock(choices=[mock_choice])
+
+    result = summarize([make_paper()], make_settings())
+    assert result == {}
+
+
+@patch("digest_pipeline.llm_utils.litellm.completion")
+def test_summarize_non_object_json_returns_empty_dict(mock_completion):
+    mock_choice = MagicMock()
+    mock_choice.message.content = '["an", "array"]'
+    mock_completion.return_value = MagicMock(choices=[mock_choice])
+
+    result = summarize([make_paper()], make_settings())
+    assert result == {}
+
+
+@patch("digest_pipeline.llm_utils.litellm.completion")
+def test_summarize_multiple_papers_schema(mock_completion):
+    mock_choice = MagicMock()
+    mock_choice.message.content = json.dumps({
+        "paper_1": "Summary 1",
+        "paper_2": "Summary 2",
+    })
+    mock_completion.return_value = MagicMock(choices=[mock_choice])
+
+    papers = [make_paper(), make_paper(title="Second Paper")]
+    result = summarize(papers, make_settings())
+    assert result == {"paper_1": "Summary 1", "paper_2": "Summary 2"}
+
+    # Schema should enumerate both keys
+    rf = mock_completion.call_args.kwargs["response_format"]
+    schema = rf["json_schema"]["schema"]
+    assert "paper_1" in schema["properties"]
+    assert "paper_2" in schema["properties"]
+    assert schema["required"] == ["paper_1", "paper_2"]

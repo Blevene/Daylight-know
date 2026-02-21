@@ -1,5 +1,7 @@
 """Shared fixtures for E2E pipeline tests."""
 
+import json
+
 import pytest
 from pathlib import Path
 from datetime import datetime, timezone
@@ -27,8 +29,9 @@ def corrupt_file() -> Path:
 
 @pytest.fixture
 def stub_llm():
-    """Start a stub LLM server for the duration of the test."""
-    server = StubLLMServer(config=StubConfig(response_content="E2E stub summary."))
+    """Start a stub LLM server that returns JSON-formatted responses."""
+    json_response = json.dumps({"paper_1": "E2E stub summary."})
+    server = StubLLMServer(config=StubConfig(response_content=json_response))
     server.start()
     yield server
     server.stop()
