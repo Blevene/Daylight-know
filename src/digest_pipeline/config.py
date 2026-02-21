@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     semanticscholar_api_key: str = Field(default="")
     semanticscholar_max_results: int = Field(default=20)
     semanticscholar_query: str = Field(default="machine learning")
+    semanticscholar_fields_of_study: list[str] = Field(default_factory=list)
 
     # ── GitHub (optional) ───────────────────────────────────────
     github_enabled: bool = Field(default=False)

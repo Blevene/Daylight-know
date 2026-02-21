@@ -340,6 +340,13 @@ def _collect_optional_settings() -> dict[str, str]:
         )
         config["SEMANTICSCHOLAR_MAX_RESULTS"] = _prompt("Semantic Scholar max results", "20")
         config["SEMANTICSCHOLAR_QUERY"] = _prompt("Semantic Scholar search query", "machine learning")
+        _print_info(
+            "Fields of study: Computer Science, Mathematics, Physics, Chemistry, "
+            "Biology, Medicine, Engineering, Economics, etc."
+        )
+        fields = _prompt("Fields of study filter (comma-separated, optional)")
+        if fields:
+            config["SEMANTICSCHOLAR_FIELDS_OF_STUDY"] = fields
     else:
         config["SEMANTICSCHOLAR_ENABLED"] = "false"
 
@@ -467,6 +474,7 @@ def _write_env_file(config: dict[str, str], path: Path) -> None:
                 "SEMANTICSCHOLAR_API_KEY",
                 "SEMANTICSCHOLAR_MAX_RESULTS",
                 "SEMANTICSCHOLAR_QUERY",
+                "SEMANTICSCHOLAR_FIELDS_OF_STUDY",
             ],
         ),
         (

@@ -4,6 +4,19 @@ Queries the Semantic Scholar Academic Graph API for recent papers matching
 the configured search query and returns them as Paper objects.
 Papers from this source do not include PDFs — the pipeline uses their
 abstracts directly for chunking and summarization.
+
+Semantic Scholar provides a flat list of "Fields of Study" that can be
+used to narrow results.  Unlike arXiv's hierarchical taxonomy, these are
+broad top-level labels:
+
+    Computer Science, Mathematics, Physics, Chemistry, Biology,
+    Medicine, Engineering, Environmental Science, Economics,
+    Business, Political Science, Psychology, Sociology, Geography,
+    History, Art, Philosophy, Linguistics, Materials Science,
+    Geology, Agricultural and Food Sciences, Education, Law
+
+Set ``SEMANTICSCHOLAR_FIELDS_OF_STUDY`` in your ``.env`` to filter
+(comma-separated, e.g. ``Computer Science,Mathematics``).
 """
 
 from __future__ import annotations
@@ -19,6 +32,33 @@ from digest_pipeline.fetcher import Paper
 logger = logging.getLogger(__name__)
 
 S2_SEARCH_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
+
+# All valid Semantic Scholar fields of study (for reference / validation).
+S2_FIELDS_OF_STUDY = [
+    "Computer Science",
+    "Mathematics",
+    "Physics",
+    "Chemistry",
+    "Biology",
+    "Medicine",
+    "Engineering",
+    "Environmental Science",
+    "Economics",
+    "Business",
+    "Political Science",
+    "Psychology",
+    "Sociology",
+    "Geography",
+    "History",
+    "Art",
+    "Philosophy",
+    "Linguistics",
+    "Materials Science",
+    "Geology",
+    "Agricultural and Food Sciences",
+    "Education",
+    "Law",
+]
 
 
 def fetch_s2_papers(settings: Settings) -> list[Paper]:
@@ -49,6 +89,9 @@ def fetch_s2_papers(settings: Settings) -> list[Paper]:
         "fields": "title,authors,abstract,url,publicationDate,externalIds,openAccessPdf",
         "publicationDateOrYear": f"{date_from}:{date_to}",
     }
+
+    if settings.semanticscholar_fields_of_study:
+        params["fieldsOfStudy"] = ",".join(settings.semanticscholar_fields_of_study)
 
     try:
         resp = requests.get(S2_SEARCH_URL, params=params, headers=headers, timeout=30)

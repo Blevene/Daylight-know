@@ -107,3 +107,36 @@ def test_fetch_s2_papers_skips_missing_fields(mock_get, make_settings):
 
     assert len(papers) == 1
     assert papers[0].paper_id == "s2_good"
+
+
+@patch("digest_pipeline.s2_fetcher.requests.get")
+def test_fetch_s2_papers_passes_fields_of_study(mock_get, make_settings):
+    """fieldsOfStudy is included in params when configured."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"data": []}
+    mock_resp.raise_for_status = MagicMock()
+    mock_get.return_value = mock_resp
+
+    settings = make_settings(
+        semanticscholar_enabled=True,
+        semanticscholar_fields_of_study=["Computer Science", "Mathematics"],
+    )
+    fetch_s2_papers(settings)
+
+    call_kwargs = mock_get.call_args
+    assert call_kwargs.kwargs["params"]["fieldsOfStudy"] == "Computer Science,Mathematics"
+
+
+@patch("digest_pipeline.s2_fetcher.requests.get")
+def test_fetch_s2_papers_omits_fields_of_study_when_empty(mock_get, make_settings):
+    """fieldsOfStudy is omitted from params when not configured."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"data": []}
+    mock_resp.raise_for_status = MagicMock()
+    mock_get.return_value = mock_resp
+
+    settings = make_settings(semanticscholar_enabled=True)
+    fetch_s2_papers(settings)
+
+    call_kwargs = mock_get.call_args
+    assert "fieldsOfStudy" not in call_kwargs.kwargs["params"]
