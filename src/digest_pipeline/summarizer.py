@@ -1,5 +1,8 @@
 """LLM-powered summarization with token limits and exponential backoff.
 
+Uses litellm as the LLM adapter, enabling any provider (OpenAI, Anthropic,
+Cohere, local models, etc.) via the ``LLM_MODEL`` setting.
+
 EARS coverage
 ─────────────
 - Event 2.2-3: pass paper abstracts to LLM after chunking/storage is complete.
@@ -12,7 +15,7 @@ from __future__ import annotations
 import logging
 import time
 
-from openai import OpenAI, RateLimitError
+import litellm
 
 from digest_pipeline.config import Settings
 from digest_pipeline.fetcher import Paper
@@ -52,15 +55,16 @@ def summarize(
     Enforces ``settings.llm_max_tokens`` (EARS 2.3-1) and retries with
     exponential backoff on rate-limit errors (EARS 2.4-4).
     """
-    client = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
     user_prompt = _build_user_prompt(papers, github_section)
 
     max_backoff_attempts = 5
     for attempt in range(1, max_backoff_attempts + 1):
         try:
-            response = client.chat.completions.create(
+            response = litellm.completion(
                 model=settings.llm_model,
                 max_tokens=settings.llm_max_tokens,
+                api_key=settings.llm_api_key,
+                api_base=settings.llm_api_base,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},
@@ -69,7 +73,7 @@ def summarize(
             summary = response.choices[0].message.content or ""
             logger.info("LLM summarization complete (%d chars).", len(summary))
             return summary
-        except RateLimitError as exc:
+        except litellm.RateLimitError as exc:
             wait = 2 ** attempt
             logger.warning(
                 "Rate-limited (attempt %d/%d). Retrying in %ds: %s",

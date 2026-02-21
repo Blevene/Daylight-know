@@ -48,15 +48,13 @@ def test_build_user_prompt_with_github():
     assert "Trending GitHub Repositories" in prompt
 
 
-@patch("digest_pipeline.summarizer.OpenAI")
-def test_summarize_success(mock_openai_cls):
-    mock_client = MagicMock()
-    mock_openai_cls.return_value = mock_client
+@patch("digest_pipeline.summarizer.litellm.completion")
+def test_summarize_success(mock_completion):
     mock_choice = MagicMock()
     mock_choice.message.content = "This is a summary."
-    mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
+    mock_completion.return_value = MagicMock(choices=[mock_choice])
 
     settings = _make_settings()
     result = summarize([_make_paper()], settings)
     assert result == "This is a summary."
-    mock_client.chat.completions.create.assert_called_once()
+    mock_completion.assert_called_once()

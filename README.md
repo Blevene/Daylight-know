@@ -16,7 +16,7 @@ arXiv API ──▶ PDF Download ──▶ Text Extraction (PyMuPDF)
                               Vector Storage (ChromaDB)
                                        │
                                        ▼
-               GitHub Trending ──▶ LLM Summarization (OpenAI)
+               GitHub Trending ──▶ LLM Summarization (litellm)
                (optional)              │
                                        ▼
                               Post-Processing (Implications & Critiques)
@@ -36,7 +36,8 @@ arXiv API ──▶ PDF Download ──▶ Text Extraction (PyMuPDF)
 5. **GitHub Trending** *(optional)* — Fetches recently-created trending
    repositories from GitHub and appends them to the LLM prompt.
 6. **Summarize** — Sends paper abstracts (and optional GitHub section) to an
-   OpenAI-compatible LLM for digest generation.
+   LLM via [litellm](https://github.com/BerriAI/litellm) (supports OpenAI,
+   Anthropic, Cohere, Ollama, Azure, and 100+ other providers).
 7. **Post-process** — Optionally generates practical implications and critical
    analysis via separate LLM calls.
 8. **Email** — Delivers the digest as a styled HTML + plaintext email via
@@ -47,7 +48,7 @@ arXiv API ──▶ PDF Download ──▶ Text Extraction (PyMuPDF)
 ### Prerequisites
 
 - Python 3.10+
-- An OpenAI-compatible API key
+- An API key for any [litellm-supported LLM provider](https://docs.litellm.ai/docs/providers)
 - SMTP credentials (for email delivery)
 
 ### Installation
@@ -70,10 +71,10 @@ Key settings in `.env`:
 |---|---|---|
 | `ARXIV_TOPICS` | Comma-separated arXiv categories | `cs.AI,cs.LG` |
 | `ARXIV_MAX_RESULTS` | Max papers to fetch per run | `50` |
-| `LLM_API_KEY` | OpenAI API key | — |
-| `LLM_MODEL` | Model name | `gpt-4o-mini` |
+| `LLM_API_KEY` | API key for your LLM provider | — |
+| `LLM_MODEL` | litellm model string (e.g. `openai/gpt-4o-mini`, `anthropic/claude-sonnet-4-20250514`) | `openai/gpt-4o-mini` |
 | `LLM_MAX_TOKENS` | Max tokens for LLM responses | `4096` |
-| `LLM_BASE_URL` | OpenAI-compatible base URL | `https://api.openai.com/v1` |
+| `LLM_API_BASE` | Optional custom API base URL | — |
 | `CHROMA_PERSIST_DIR` | ChromaDB storage directory | `./data/chromadb` |
 | `SMTP_HOST` | SMTP server hostname | `smtp.gmail.com` |
 | `SMTP_PORT` | SMTP port (SSL) | `465` |

@@ -57,66 +57,58 @@ def test_build_user_prompt_multiple_papers():
     assert "---" in prompt
 
 
-@patch("digest_pipeline.postprocessor.OpenAI")
-def test_extract_implications_success(mock_openai_cls):
-    mock_client = MagicMock()
-    mock_openai_cls.return_value = mock_client
+@patch("digest_pipeline.postprocessor.litellm.completion")
+def test_extract_implications_success(mock_completion):
     mock_choice = MagicMock()
     mock_choice.message.content = "Practitioners can apply these findings by..."
-    mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
+    mock_completion.return_value = MagicMock(choices=[mock_choice])
 
     settings = _make_settings()
     result = extract_implications([_make_paper()], settings)
 
     assert result == "Practitioners can apply these findings by..."
-    mock_client.chat.completions.create.assert_called_once()
+    mock_completion.assert_called_once()
 
-    call_kwargs = mock_client.chat.completions.create.call_args
+    call_kwargs = mock_completion.call_args
     messages = call_kwargs.kwargs["messages"]
     assert messages[0]["content"] == IMPLICATIONS_SYSTEM_PROMPT
 
 
-@patch("digest_pipeline.postprocessor.OpenAI")
-def test_generate_critiques_success(mock_openai_cls):
-    mock_client = MagicMock()
-    mock_openai_cls.return_value = mock_client
+@patch("digest_pipeline.postprocessor.litellm.completion")
+def test_generate_critiques_success(mock_completion):
     mock_choice = MagicMock()
     mock_choice.message.content = "The methodology has several strengths..."
-    mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
+    mock_completion.return_value = MagicMock(choices=[mock_choice])
 
     settings = _make_settings()
     result = generate_critiques([_make_paper()], settings)
 
     assert result == "The methodology has several strengths..."
-    mock_client.chat.completions.create.assert_called_once()
+    mock_completion.assert_called_once()
 
-    call_kwargs = mock_client.chat.completions.create.call_args
+    call_kwargs = mock_completion.call_args
     messages = call_kwargs.kwargs["messages"]
     assert messages[0]["content"] == CRITIQUES_SYSTEM_PROMPT
 
 
-@patch("digest_pipeline.postprocessor.OpenAI")
-def test_llm_call_respects_max_tokens(mock_openai_cls):
-    mock_client = MagicMock()
-    mock_openai_cls.return_value = mock_client
+@patch("digest_pipeline.postprocessor.litellm.completion")
+def test_llm_call_respects_max_tokens(mock_completion):
     mock_choice = MagicMock()
     mock_choice.message.content = "result"
-    mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
+    mock_completion.return_value = MagicMock(choices=[mock_choice])
 
     settings = _make_settings(llm_max_tokens=2048)
     extract_implications([_make_paper()], settings)
 
-    call_kwargs = mock_client.chat.completions.create.call_args
+    call_kwargs = mock_completion.call_args
     assert call_kwargs.kwargs["max_tokens"] == 2048
 
 
-@patch("digest_pipeline.postprocessor.OpenAI")
-def test_llm_call_empty_content_returns_empty_string(mock_openai_cls):
-    mock_client = MagicMock()
-    mock_openai_cls.return_value = mock_client
+@patch("digest_pipeline.postprocessor.litellm.completion")
+def test_llm_call_empty_content_returns_empty_string(mock_completion):
     mock_choice = MagicMock()
     mock_choice.message.content = None
-    mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
+    mock_completion.return_value = MagicMock(choices=[mock_choice])
 
     settings = _make_settings()
     result = generate_critiques([_make_paper()], settings)

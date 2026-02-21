@@ -25,11 +25,11 @@ class Settings(BaseSettings):
     arxiv_topics: list[str] = Field(default=["cs.AI", "cs.LG"])
     arxiv_max_results: int = Field(default=50)
 
-    # ── LLM ─────────────────────────────────────────────────────
+    # ── LLM (via litellm — supports any provider) ─────────────
     llm_api_key: str = Field(default="")
-    llm_model: str = Field(default="gpt-4o-mini")
+    llm_model: str = Field(default="openai/gpt-4o-mini")
     llm_max_tokens: int = Field(default=4096)
-    llm_base_url: str = Field(default="https://api.openai.com/v1")
+    llm_api_base: str | None = Field(default=None)
 
     # ── ChromaDB ────────────────────────────────────────────────
     chroma_persist_dir: Path = Field(default=Path("./data/chromadb"))
