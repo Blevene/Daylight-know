@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "digest-pipeline"
+version = "0.1.0"
+description = "Automated Research Digest Pipeline — fetches arXiv papers, chunks text, stores embeddings, and emails LLM-generated summaries."
+requires-python = ">=3.10"
+license = "Apache-2.0"
+dependencies = [
+    "arxiv>=2.1",
+    "PyMuPDF>=1.24",
+    "chonkie[semantic]>=1.0",
+    "chromadb>=0.5",
+    "openai>=1.0",
+    "requests>=2.31",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "python-dotenv>=1.0",
+    "jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+digest-pipeline = "digest_pipeline.pipeline:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/digest_pipeline"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
