@@ -29,12 +29,51 @@ def test_build_email_structure():
     assert len(payloads) == 2  # plaintext + HTML
 
 
+def test_build_email_with_implications_and_critiques():
+    settings = _make_settings()
+    msg = _build_email(
+        "Test summary", 3, "2025-01-15", settings,
+        implications="Apply this to X.",
+        critiques="Limitation in Y.",
+    )
+    payloads = msg.get_payload()
+    html_body = payloads[1].get_payload(decode=True).decode()
+    plain_body = payloads[0].get_payload(decode=True).decode()
+    assert "Practical Implications" in html_body
+    assert "Apply this to X." in html_body
+    assert "Critiques" in html_body
+    assert "Limitation in Y." in html_body
+    assert "Practical Implications" in plain_body
+    assert "Apply this to X." in plain_body
+
+
+def test_build_email_without_optional_sections():
+    settings = _make_settings()
+    msg = _build_email("Test summary", 3, "2025-01-15", settings)
+    payloads = msg.get_payload()
+    html_body = payloads[1].get_payload(decode=True).decode()
+    assert "Practical Implications" not in html_body
+    assert "Critiques" not in html_body
+
+
 def test_dry_run_does_not_send(capsys):
     settings = _make_settings(dry_run=True)
     send_digest("Summary text", 2, "2025-01-15", settings)
     captured = capsys.readouterr()
     assert "Summary text" in captured.out
     assert "DRY-RUN" not in captured.out or True  # DRY-RUN is logged, not printed
+
+
+def test_dry_run_includes_implications_and_critiques(capsys):
+    settings = _make_settings(dry_run=True)
+    send_digest(
+        "Summary text", 2, "2025-01-15", settings,
+        implications="Implication details",
+        critiques="Critique details",
+    )
+    captured = capsys.readouterr()
+    assert "Implication details" in captured.out
+    assert "Critique details" in captured.out
 
 
 @patch("digest_pipeline.emailer.smtplib.SMTP_SSL")
