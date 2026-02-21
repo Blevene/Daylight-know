@@ -61,6 +61,9 @@ def store_chunks(
     design document.  If ChromaDB is unreachable, ``VectorStoreError``
     is raised (EARS 2.4-3).
     """
+    if not chunks:
+        return []
+
     collection = _get_collection(settings)
 
     ids: list[str] = []
