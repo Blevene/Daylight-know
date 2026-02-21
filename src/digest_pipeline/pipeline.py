@@ -139,9 +139,8 @@ def run(settings: Settings | None = None) -> None:
     logger.info("Pipeline run complete. %d paper(s) in digest.", len(processed_papers))
 
 
-def main() -> None:
-    """CLI entry point."""
-    parser = argparse.ArgumentParser(description="Automated Research Digest Pipeline")
+def _add_run_args(parser: argparse.ArgumentParser) -> None:
+    """Add run-mode arguments to a parser."""
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -153,11 +152,59 @@ def main() -> None:
         nargs="+",
         help="arXiv category codes (e.g. cs.AI cs.LG)",
     )
+
+
+def _handle_run(args: argparse.Namespace) -> None:
+    """Execute the pipeline from CLI args."""
+    settings = get_settings()
+    if args.dry_run is not None:
+        settings.dry_run = True
+    if args.topics:
+        settings.arxiv_topics = args.topics
+    run(settings)
+
+
+def main() -> None:
+    """CLI entry point with subcommands: run, setup, topics."""
+    parser = argparse.ArgumentParser(description="Automated Research Digest Pipeline")
     parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Enable DEBUG-level logging",
     )
+
+    # Root-level run args for backward compat (digest-pipeline --dry-run)
+    _add_run_args(parser)
+
+    subparsers = parser.add_subparsers(dest="command")
+
+    # ── run subcommand ───────────────────────────────────────────
+    run_parser = subparsers.add_parser("run", help="Run the digest pipeline")
+    _add_run_args(run_parser)
+
+    # ── setup subcommand ─────────────────────────────────────────
+    setup_parser = subparsers.add_parser("setup", help="Interactive setup wizard")
+    setup_parser.add_argument(
+        "--env-file",
+        default=".env",
+        help="Path to .env file (default: .env)",
+    )
+
+    # ── topics subcommand ────────────────────────────────────────
+    topics_parser = subparsers.add_parser("topics", help="Browse arXiv topics")
+    topics_sub = topics_parser.add_subparsers(dest="topics_command")
+
+    topics_sub.add_parser("list", help="List all topic groups")
+
+    search_parser = topics_sub.add_parser("search", help="Search topics by keyword")
+    search_parser.add_argument("query", help="Search query")
+
+    group_parser = topics_sub.add_parser("group", help="List topics in a group")
+    group_parser.add_argument("name", help="Group name (e.g. cs, math, physics)")
+
+    validate_parser = topics_sub.add_parser("validate", help="Validate topic codes")
+    validate_parser.add_argument("codes", nargs="+", help="Topic codes to validate")
+
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -165,13 +212,15 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    settings = get_settings()
-    if args.dry_run is not None:
-        settings.dry_run = True
-    if args.topics:
-        settings.arxiv_topics = args.topics
-
-    run(settings)
+    if args.command == "setup":
+        from digest_pipeline.setup import run_setup_wizard
+        run_setup_wizard(args.env_file)
+    elif args.command == "topics":
+        from digest_pipeline.topics_cli import handle_topics_command
+        handle_topics_command(args)
+    else:
+        # No subcommand or "run" — execute pipeline
+        _handle_run(args)
 
 
 if __name__ == "__main__":
