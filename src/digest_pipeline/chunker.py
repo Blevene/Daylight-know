@@ -30,9 +30,11 @@ def chunk_text(text: str) -> list[TextChunk]:
     Returns an ordered list of ``TextChunk`` objects.
     """
     chunker = SemanticChunker(
-        embedding_model="all-MiniLM-L6-v2",
-        chunk_size=512,
-        similarity_threshold=0.5,
+        embedding_model="minishlab/potion-base-32M",
+        threshold=0.8,
+        chunk_size=2048,
+        similarity_window=3,
+        skip_window=0,
     )
     raw_chunks = chunker.chunk(text)
 
