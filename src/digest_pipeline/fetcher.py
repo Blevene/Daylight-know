@@ -35,6 +35,7 @@ class Paper:
     url: str
     published: datetime
     pdf_path: Path | None = None
+    categories: list[str] = field(default_factory=list)
 
 
 def _within_last_24h(dt: datetime) -> bool:
@@ -103,6 +104,7 @@ def fetch_papers(settings: Settings) -> list[Paper]:
                 url=result.entry_id,
                 published=result.published,
                 pdf_path=pdf_dest,
+                categories=result.categories,
             )
         )
 

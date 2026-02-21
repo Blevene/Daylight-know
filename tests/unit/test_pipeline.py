@@ -5,25 +5,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from digest_pipeline.config import Settings
 from digest_pipeline.extractor import ExtractionResult
 from digest_pipeline.fetcher import Paper
 from digest_pipeline.pipeline import PaperAnalysis, _build_analyses, run
-
-
-def _make_settings(**overrides) -> Settings:
-    defaults = dict(
-        _env_file=None,
-        llm_api_key="test-key",
-        smtp_user="u",
-        smtp_password="p",
-        email_from="a@b.com",
-        email_to="c@d.com",
-        dry_run=True,
-        github_enabled=False,
-    )
-    defaults.update(overrides)
-    return Settings(**defaults)
 
 
 def _make_paper(**overrides) -> Paper:
@@ -62,10 +46,21 @@ def test_build_analyses():
     assert analyses[1].critique == "Crit 2"
 
 
+def test_build_analyses_passes_categories():
+    papers = [
+        _make_paper(title="Paper 1", url="http://1", authors=["A"], categories=["cs.AI", "cs.LG"]),
+    ]
+    summaries = {"paper_1": "Sum 1"}
+
+    analyses = _build_analyses(papers, summaries, {}, {})
+
+    assert analyses[0].categories == ["cs.AI", "cs.LG"]
+
+
 @patch("digest_pipeline.pipeline.fetch_papers", return_value=[])
-def test_run_no_papers(mock_fetch):
+def test_run_no_papers(mock_fetch, make_settings):
     """Pipeline exits gracefully when no papers are found."""
-    run(_make_settings())
+    run(make_settings())
     mock_fetch.assert_called_once()
 
 
@@ -83,10 +78,11 @@ def test_run_no_papers(mock_fetch):
 def test_run_full_pipeline(
     mock_fetch, mock_extract, mock_chunk, mock_store,
     mock_summarize, mock_implications, mock_critiques, mock_email,
+    make_settings,
 ):
     paper = _make_paper()
     mock_fetch.return_value = [paper]
-    settings = _make_settings()
+    settings = make_settings()
 
     run(settings)
 
@@ -124,10 +120,11 @@ def test_run_full_pipeline(
 def test_run_postprocessing_disabled(
     mock_fetch, mock_extract, mock_chunk, mock_store,
     mock_summarize, mock_implications, mock_critiques, mock_email,
+    make_settings,
 ):
     paper = _make_paper()
     mock_fetch.return_value = [paper]
-    settings = _make_settings(
+    settings = make_settings(
         postprocessing_implications=False,
         postprocessing_critiques=False,
     )
@@ -148,10 +145,10 @@ def test_run_postprocessing_disabled(
     return_value=ExtractionResult(arxiv_id="2401.00001", text="", parseable=False),
 )
 @patch("digest_pipeline.pipeline.fetch_papers")
-def test_run_unparseable_paper(mock_fetch, mock_extract, mock_store_unparse):
+def test_run_unparseable_paper(mock_fetch, mock_extract, mock_store_unparse, make_settings):
     paper = _make_paper()
     mock_fetch.return_value = [paper]
 
-    run(_make_settings())
+    run(make_settings())
 
     mock_store_unparse.assert_called_once()

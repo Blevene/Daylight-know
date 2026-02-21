@@ -40,6 +40,7 @@ class PaperAnalysis:
     title: str
     url: str
     authors: list[str] = field(default_factory=list)
+    categories: list[str] = field(default_factory=list)
     summary: str = ""
     implications: str = ""
     critique: str = ""
@@ -59,6 +60,7 @@ def _build_analyses(
             title=paper.title,
             url=paper.url,
             authors=paper.authors,
+            categories=paper.categories,
             summary=summaries.get(key, ""),
             implications=implications.get(key, ""),
             critique=critiques.get(key, ""),

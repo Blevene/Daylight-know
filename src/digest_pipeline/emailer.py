@@ -16,7 +16,9 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import TYPE_CHECKING
 
-from jinja2 import Template
+import mistune
+from jinja2 import Environment, select_autoescape
+from markupsafe import Markup
 
 from digest_pipeline.config import Settings
 
@@ -25,7 +27,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-HTML_TEMPLATE = Template("""\
+_md = mistune.create_markdown()
+
+
+def _markdown_to_html(text: str) -> Markup:
+    """Convert markdown text to HTML, marked safe for Jinja2 auto-escaping."""
+    return Markup(_md(text))
+
+
+_html_env = Environment(autoescape=select_autoescape(default=True))
+_html_env.filters["md"] = _markdown_to_html
+
+HTML_TEMPLATE = _html_env.from_string("""\
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><style>
@@ -37,7 +50,8 @@ HTML_TEMPLATE = Template("""\
   h2 a:hover { text-decoration: underline; }
   h3 { color: #444; margin-top: 18px; margin-bottom: 6px; }
   .authors { color: #666; font-size: 0.9em; margin-top: 2px; }
-  .section { line-height: 1.6; white-space: pre-wrap; }
+  .categories { color: #888; font-size: 0.85em; margin-top: 2px; }
+  .section { line-height: 1.6; }
   .paper { margin-bottom: 10px; }
   hr { border: none; border-top: 1px solid #e2e2e2; margin: 30px 0; }
   .footer { margin-top: 30px; font-size: 0.85em; color: #888; }
@@ -48,17 +62,20 @@ HTML_TEMPLATE = Template("""\
   <div class="paper">
     <h2><a href="{{ paper.url }}">{{ paper.title }}</a></h2>
     <p class="authors">{{ paper.authors | join(', ') }}</p>
+    {% if paper.categories %}
+    <p class="categories">{{ paper.categories | join(' · ') }}</p>
+    {% endif %}
     {% if paper.summary %}
     <h3>Summary</h3>
-    <div class="section">{{ paper.summary }}</div>
+    <div class="section">{{ paper.summary | md }}</div>
     {% endif %}
     {% if paper.implications %}
     <h3>Practical Implications</h3>
-    <div class="section">{{ paper.implications }}</div>
+    <div class="section">{{ paper.implications | md }}</div>
     {% endif %}
     {% if paper.critique %}
     <h3>Critique</h3>
-    <div class="section">{{ paper.critique }}</div>
+    <div class="section">{{ paper.critique | md }}</div>
     {% endif %}
   </div>
   {% if not loop.last %}<hr>{% endif %}
@@ -69,7 +86,8 @@ HTML_TEMPLATE = Template("""\
 </html>
 """)
 
-PLAIN_TEMPLATE = Template("""\
+_plain_env = Environment(autoescape=False)
+PLAIN_TEMPLATE = _plain_env.from_string("""\
 Daily Research Digest — {{ date }}
 ==========================================
 {% for paper in papers %}
@@ -77,6 +95,9 @@ Daily Research Digest — {{ date }}
 ## {{ paper.title }}
 {{ paper.url }}
 Authors: {{ paper.authors | join(', ') }}
+{% if paper.categories %}
+Categories: {{ paper.categories | join(', ') }}
+{% endif %}
 {% if paper.summary %}
 
 ### Summary
