@@ -19,12 +19,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ExtractionResult:
-    arxiv_id: str
+    paper_id: str
     text: str
     parseable: bool
 
 
-def extract_text(pdf_path: Path, arxiv_id: str) -> ExtractionResult:
+def extract_text(pdf_path: Path, paper_id: str) -> ExtractionResult:
     """Extract all text from *pdf_path* using PyMuPDF.
 
     If the resulting text is empty (e.g. scanned images without OCR),
@@ -40,7 +40,7 @@ def extract_text(pdf_path: Path, arxiv_id: str) -> ExtractionResult:
         full_text = ""
 
     if not full_text:
-        logger.warning("Empty text for %s — marking as unparseable.", arxiv_id)
-        return ExtractionResult(arxiv_id=arxiv_id, text="", parseable=False)
+        logger.warning("Empty text for %s — marking as unparseable.", paper_id)
+        return ExtractionResult(paper_id=paper_id, text="", parseable=False)
 
-    return ExtractionResult(arxiv_id=arxiv_id, text=full_text, parseable=True)
+    return ExtractionResult(paper_id=paper_id, text=full_text, parseable=True)

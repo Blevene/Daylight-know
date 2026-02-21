@@ -17,12 +17,13 @@ def pytest_configure(config):
 def make_paper(**overrides) -> Paper:
     """Create a Paper with sensible test defaults."""
     defaults = dict(
-        arxiv_id="2401.00001",
+        paper_id="2401.00001",
         title="Test Paper",
         authors=["Alice", "Bob"],
         abstract="This paper explores testing.",
         url="https://arxiv.org/abs/2401.00001",
         published=datetime(2025, 1, 15, tzinfo=timezone.utc),
+        source="arxiv",
         pdf_path=None,
     )
     defaults.update(overrides)

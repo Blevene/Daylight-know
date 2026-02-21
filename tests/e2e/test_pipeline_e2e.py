@@ -31,8 +31,8 @@ class TestPipelineE2E:
 
     def test_mixed_parseable_unparseable(self, e2e_settings, make_paper, sample_pdf, corrupt_file, capsys):
         """PL-2: One valid PDF + one corrupt -> only valid one in summary."""
-        valid_paper = make_paper(pdf_path=sample_pdf, arxiv_id="valid.001")
-        corrupt_paper = make_paper(pdf_path=corrupt_file, arxiv_id="corrupt.001")
+        valid_paper = make_paper(pdf_path=sample_pdf, paper_id="valid.001")
+        corrupt_paper = make_paper(pdf_path=corrupt_file, paper_id="corrupt.001")
 
         with patch("digest_pipeline.pipeline.fetch_papers", return_value=[valid_paper, corrupt_paper]):
             run(e2e_settings)

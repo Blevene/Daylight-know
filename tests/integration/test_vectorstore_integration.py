@@ -58,7 +58,7 @@ class TestVectorstoreIntegration:
         assert len(stored) == 3
         assert all(isinstance(s, StoredChunk) for s in stored)
 
-        # Verify IDs follow the pattern <arxiv_id>_chunk_<index>
+        # Verify IDs follow the pattern <paper_id>_chunk_<index>
         expected_ids = [
             "2401.00001_chunk_0",
             "2401.00001_chunk_1",

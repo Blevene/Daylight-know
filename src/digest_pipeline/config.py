@@ -46,6 +46,17 @@ class Settings(BaseSettings):
     # ── Pipeline mode ───────────────────────────────────────────
     dry_run: bool = Field(default=True)
 
+    # ── HuggingFace (optional) ──────────────────────────────────
+    huggingface_enabled: bool = Field(default=False)
+    huggingface_token: str = Field(default="")
+    huggingface_max_results: int = Field(default=20)
+
+    # ── Semantic Scholar (optional) ──────────────────────────────
+    semanticscholar_enabled: bool = Field(default=False)
+    semanticscholar_api_key: str = Field(default="")
+    semanticscholar_max_results: int = Field(default=20)
+    semanticscholar_query: str = Field(default="machine learning")
+
     # ── GitHub (optional) ───────────────────────────────────────
     github_enabled: bool = Field(default=False)
     github_languages: list[str] = Field(default=["python"])

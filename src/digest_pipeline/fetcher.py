@@ -26,14 +26,18 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Paper:
-    """Lightweight representation of a fetched arXiv paper."""
+    """Lightweight representation of a fetched research paper.
 
-    arxiv_id: str
+    Works with any source (arXiv, HuggingFace, Semantic Scholar, etc.).
+    """
+
+    paper_id: str
     title: str
     authors: list[str]
     abstract: str
     url: str
     published: datetime
+    source: str = "arxiv"
     pdf_path: Path | None = None
     categories: list[str] = field(default_factory=list)
 
@@ -87,22 +91,23 @@ def fetch_papers(settings: Settings) -> list[Paper]:
         if not _within_last_24h(result.published):
             continue
 
-        arxiv_id = result.entry_id.split("/")[-1]
+        paper_id = result.entry_id.split("/")[-1]
         pdf_url = result.pdf_url
-        pdf_dest = tmp_dir / f"{arxiv_id}.pdf"
+        pdf_dest = tmp_dir / f"{paper_id}.pdf"
 
         if not _download_pdf(pdf_url, pdf_dest, max_retries=settings.pdf_download_max_retries):
-            logger.error("Skipping paper %s — PDF download failed after %d attempts.", arxiv_id, settings.pdf_download_max_retries)
+            logger.error("Skipping paper %s — PDF download failed after %d attempts.", paper_id, settings.pdf_download_max_retries)
             continue
 
         papers.append(
             Paper(
-                arxiv_id=arxiv_id,
+                paper_id=paper_id,
                 title=result.title,
                 authors=[a.name for a in result.authors],
                 abstract=result.summary,
                 url=result.entry_id,
                 published=result.published,
+                source="arxiv",
                 pdf_path=pdf_dest,
                 categories=result.categories,
             )

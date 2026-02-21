@@ -12,12 +12,13 @@ from digest_pipeline.pipeline import PaperAnalysis, _build_analyses, run
 
 def _make_paper(**overrides) -> Paper:
     defaults = dict(
-        arxiv_id="2401.00001",
+        paper_id="2401.00001",
         title="Test Paper",
         authors=["Alice"],
         abstract="Abstract text.",
         url="https://arxiv.org/abs/2401.00001",
         published=datetime(2025, 1, 15, tzinfo=timezone.utc),
+        source="arxiv",
         pdf_path=Path("/tmp/fake.pdf"),
     )
     defaults.update(overrides)
@@ -72,7 +73,7 @@ def test_run_no_papers(mock_fetch, make_settings):
 @patch("digest_pipeline.pipeline.chunk_text", return_value=[])
 @patch(
     "digest_pipeline.pipeline.extract_text",
-    return_value=ExtractionResult(arxiv_id="2401.00001", text="content", parseable=True),
+    return_value=ExtractionResult(paper_id="2401.00001", text="content", parseable=True),
 )
 @patch("digest_pipeline.pipeline.fetch_papers")
 def test_run_full_pipeline(
@@ -114,7 +115,7 @@ def test_run_full_pipeline(
 @patch("digest_pipeline.pipeline.chunk_text", return_value=[])
 @patch(
     "digest_pipeline.pipeline.extract_text",
-    return_value=ExtractionResult(arxiv_id="2401.00001", text="content", parseable=True),
+    return_value=ExtractionResult(paper_id="2401.00001", text="content", parseable=True),
 )
 @patch("digest_pipeline.pipeline.fetch_papers")
 def test_run_postprocessing_disabled(
@@ -142,7 +143,7 @@ def test_run_postprocessing_disabled(
 @patch("digest_pipeline.pipeline.store_unparseable")
 @patch(
     "digest_pipeline.pipeline.extract_text",
-    return_value=ExtractionResult(arxiv_id="2401.00001", text="", parseable=False),
+    return_value=ExtractionResult(paper_id="2401.00001", text="", parseable=False),
 )
 @patch("digest_pipeline.pipeline.fetch_papers")
 def test_run_unparseable_paper(mock_fetch, mock_extract, mock_store_unparse, make_settings):

@@ -63,7 +63,7 @@ def make_paper():
     """Factory for creating Paper objects."""
     def _make(pdf_path: Path | None = None, **overrides) -> Paper:
         defaults = dict(
-            arxiv_id="2401.00001",
+            paper_id="2401.00001",
             title="Test Paper",
             authors=["Alice"],
             abstract="Abstract text about machine learning.",

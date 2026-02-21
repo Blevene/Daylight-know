@@ -51,6 +51,9 @@ HTML_TEMPLATE = _html_env.from_string("""\
   h3 { color: #444; margin-top: 18px; margin-bottom: 6px; }
   .authors { color: #666; font-size: 0.9em; margin-top: 2px; }
   .categories { color: #888; font-size: 0.85em; margin-top: 2px; }
+  .source-badge { display: inline-block; font-size: 0.75em; padding: 2px 8px;
+                  border-radius: 4px; background: #e8e8f0; color: #555;
+                  margin-top: 4px; }
   .section { line-height: 1.6; }
   .paper { margin-bottom: 10px; }
   hr { border: none; border-top: 1px solid #e2e2e2; margin: 30px 0; }
@@ -62,6 +65,7 @@ HTML_TEMPLATE = _html_env.from_string("""\
   <div class="paper">
     <h2><a href="{{ paper.url }}">{{ paper.title }}</a></h2>
     <p class="authors">{{ paper.authors | join(', ') }}</p>
+    <span class="source-badge">{{ paper.source }}</span>
     {% if paper.categories %}
     <p class="categories">{{ paper.categories | join(' · ') }}</p>
     {% endif %}
@@ -95,6 +99,7 @@ Daily Research Digest — {{ date }}
 ## {{ paper.title }}
 {{ paper.url }}
 Authors: {{ paper.authors | join(', ') }}
+Source: {{ paper.source }}
 {% if paper.categories %}
 Categories: {{ paper.categories | join(', ') }}
 {% endif %}

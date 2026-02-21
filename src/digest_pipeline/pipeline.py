@@ -3,7 +3,9 @@
 Ties together all modules to execute the full daily digest workflow:
 
   1. Fetch papers from arXiv (24-hour window)
-  2. Extract text from PDFs (PyMuPDF)
+  1b. (Optional) Fetch papers from HuggingFace Daily Papers
+  1c. (Optional) Fetch papers from Semantic Scholar
+  2. Extract text from PDFs (PyMuPDF) — or use abstract for PDF-less papers
   3. Chunk text semantically (Chonkie)
   4. Store chunks + embeddings in ChromaDB
   5. (Optional) Fetch GitHub trending repos
@@ -26,7 +28,9 @@ from digest_pipeline.emailer import send_digest
 from digest_pipeline.extractor import extract_text
 from digest_pipeline.fetcher import Paper, fetch_papers
 from digest_pipeline.github_trending import fetch_trending, format_for_prompt
+from digest_pipeline.hf_fetcher import fetch_hf_papers
 from digest_pipeline.postprocessor import extract_implications, generate_critiques
+from digest_pipeline.s2_fetcher import fetch_s2_papers
 from digest_pipeline.summarizer import summarize
 from digest_pipeline.vectorstore import VectorStoreError, store_chunks, store_unparseable
 
@@ -39,6 +43,7 @@ class PaperAnalysis:
 
     title: str
     url: str
+    source: str = "arxiv"
     authors: list[str] = field(default_factory=list)
     categories: list[str] = field(default_factory=list)
     summary: str = ""
@@ -59,6 +64,7 @@ def _build_analyses(
         analyses.append(PaperAnalysis(
             title=paper.title,
             url=paper.url,
+            source=paper.source,
             authors=paper.authors,
             categories=paper.categories,
             summary=summaries.get(key, ""),
@@ -76,26 +82,47 @@ def run(settings: Settings | None = None) -> None:
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     logger.info("Pipeline run started for %s (dry_run=%s).", date_str, settings.dry_run)
 
-    # ── Step 1: Fetch papers ────────────────────────────────────
+    # ── Step 1: Fetch papers from all enabled sources ───────────
     papers = fetch_papers(settings)
+
+    if settings.huggingface_enabled:
+        hf_papers = fetch_hf_papers(settings)
+        logger.info("Fetched %d papers from HuggingFace.", len(hf_papers))
+        papers.extend(hf_papers)
+
+    if settings.semanticscholar_enabled:
+        s2_papers = fetch_s2_papers(settings)
+        logger.info("Fetched %d papers from Semantic Scholar.", len(s2_papers))
+        papers.extend(s2_papers)
+
     if not papers:
-        logger.warning("No papers found in the 24-hour window. Exiting.")
+        logger.warning("No papers found from any source. Exiting.")
         return
 
     # ── Step 2-4: Extract → Chunk → Store ───────────────────────
     processed_papers = []
     for paper in papers:
-        extraction = extract_text(paper.pdf_path, paper.arxiv_id)
+        if paper.pdf_path is not None:
+            extraction = extract_text(paper.pdf_path, paper.paper_id)
 
-        if not extraction.parseable:
-            try:
-                store_unparseable(paper, settings)
-            except VectorStoreError:
-                logger.critical("ChromaDB connection failed — halting pipeline.")
-                sys.exit(1)
-            continue
+            if not extraction.parseable:
+                try:
+                    store_unparseable(paper, settings)
+                except VectorStoreError:
+                    logger.critical("ChromaDB connection failed — halting pipeline.")
+                    sys.exit(1)
+                continue
 
-        chunks = chunk_text(extraction.text)
+            text = extraction.text
+        else:
+            # Papers without PDFs (e.g. HuggingFace, Semantic Scholar) —
+            # use the abstract directly for chunking/storage.
+            text = paper.abstract
+            if not text:
+                logger.warning("Paper %s has no PDF and no abstract — skipping.", paper.paper_id)
+                continue
+
+        chunks = chunk_text(text)
 
         try:
             store_chunks(paper, chunks, settings)

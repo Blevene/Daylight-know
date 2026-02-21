@@ -326,6 +326,23 @@ def _collect_optional_settings() -> dict[str, str]:
 
     config["PDF_DOWNLOAD_MAX_RETRIES"] = _prompt("PDF download max retries", "3")
 
+    if _prompt_bool("Enable HuggingFace Daily Papers?", default=False):
+        config["HUGGINGFACE_ENABLED"] = "true"
+        config["HUGGINGFACE_TOKEN"] = _prompt("HuggingFace token (optional, press Enter to skip)")
+        config["HUGGINGFACE_MAX_RESULTS"] = _prompt("HuggingFace max results", "20")
+    else:
+        config["HUGGINGFACE_ENABLED"] = "false"
+
+    if _prompt_bool("Enable Semantic Scholar integration?", default=False):
+        config["SEMANTICSCHOLAR_ENABLED"] = "true"
+        config["SEMANTICSCHOLAR_API_KEY"] = _prompt(
+            "Semantic Scholar API key (optional, press Enter to skip)"
+        )
+        config["SEMANTICSCHOLAR_MAX_RESULTS"] = _prompt("Semantic Scholar max results", "20")
+        config["SEMANTICSCHOLAR_QUERY"] = _prompt("Semantic Scholar search query", "machine learning")
+    else:
+        config["SEMANTICSCHOLAR_ENABLED"] = "false"
+
     if _prompt_bool("Enable GitHub trending integration?", default=False):
         config["GITHUB_ENABLED"] = "true"
         config["GITHUB_LANGUAGES"] = _prompt("GitHub languages (comma-separated)", "python,rust")
@@ -440,6 +457,19 @@ def _write_env_file(config: dict[str, str], path: Path) -> None:
             ["PDF_DOWNLOAD_MAX_RETRIES"],
         ),
         (
+            "Optional: HuggingFace Daily Papers",
+            ["HUGGINGFACE_ENABLED", "HUGGINGFACE_TOKEN", "HUGGINGFACE_MAX_RESULTS"],
+        ),
+        (
+            "Optional: Semantic Scholar",
+            [
+                "SEMANTICSCHOLAR_ENABLED",
+                "SEMANTICSCHOLAR_API_KEY",
+                "SEMANTICSCHOLAR_MAX_RESULTS",
+                "SEMANTICSCHOLAR_QUERY",
+            ],
+        ),
+        (
             "Optional: GitHub Trending",
             ["GITHUB_ENABLED", "GITHUB_LANGUAGES", "GITHUB_TOP_N"],
         ),
@@ -509,7 +539,7 @@ def run_setup_wizard(env_path: str | None = None) -> None:
     console.print(Panel(
         "[bold]Welcome to the Digest Pipeline Setup Wizard![/]\n\n"
         "This wizard will guide you through configuring your\n"
-        "arXiv research digest pipeline.\n\n"
+        "research digest pipeline (arXiv, HuggingFace, Semantic Scholar).\n\n"
         "[dim]Press Enter to accept default values shown in brackets.[/]",
         title="🔬 Digest Pipeline Setup",
         border_style="cyan",
@@ -549,7 +579,7 @@ def run_setup_wizard(env_path: str | None = None) -> None:
     summary.add_column("Value", style="white")
 
     for key, value in config.items():
-        display = "****" if "PASSWORD" in key or "API_KEY" in key else value
+        display = "****" if "PASSWORD" in key or "API_KEY" in key or "TOKEN" in key else value
         summary.add_row(key, display)
 
     console.print(summary)

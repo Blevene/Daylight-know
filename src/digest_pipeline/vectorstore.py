@@ -52,14 +52,12 @@ def store_chunks(
     paper: Paper,
     chunks: list[TextChunk],
     settings: Settings,
-    *,
-    source: str = "arxiv",
 ) -> list[StoredChunk]:
     """Persist *chunks* for *paper* into ChromaDB.
 
     Each chunk is stored with the metadata schema defined in §3 of the
-    design document.  If ChromaDB is unreachable, ``VectorStoreError``
-    is raised (EARS 2.4-3).
+    design document.  The ``source`` field is read from ``paper.source``.
+    If ChromaDB is unreachable, ``VectorStoreError`` is raised (EARS 2.4-3).
     """
     if not chunks:
         return []
@@ -72,9 +70,9 @@ def store_chunks(
     stored: list[StoredChunk] = []
 
     for chunk in chunks:
-        doc_id = f"{paper.arxiv_id}_chunk_{chunk.chunk_index}"
+        doc_id = f"{paper.paper_id}_chunk_{chunk.chunk_index}"
         metadata = {
-            "source": source,
+            "source": paper.source,
             "title": paper.title,
             "authors": ", ".join(paper.authors),
             "url": paper.url,
@@ -87,7 +85,7 @@ def store_chunks(
         stored.append(
             StoredChunk(
                 doc_id=doc_id,
-                source=source,
+                source=paper.source,
                 title=paper.title,
                 authors=metadata["authors"],
                 url=paper.url,
@@ -98,20 +96,20 @@ def store_chunks(
         )
 
     collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
-    logger.info("Stored %d chunks for paper %s.", len(stored), paper.arxiv_id)
+    logger.info("Stored %d chunks for paper %s.", len(stored), paper.paper_id)
     return stored
 
 
 def store_unparseable(paper: Paper, settings: Settings) -> None:
     """Record an unparseable document in ChromaDB with a flag (EARS 2.4-2)."""
     collection = _get_collection(settings)
-    doc_id = f"{paper.arxiv_id}_unparseable"
+    doc_id = f"{paper.paper_id}_unparseable"
     collection.upsert(
         ids=[doc_id],
         documents=["[unparseable]"],
         metadatas=[
             {
-                "source": "arxiv",
+                "source": paper.source,
                 "title": paper.title,
                 "authors": ", ".join(paper.authors),
                 "url": paper.url,
@@ -121,4 +119,4 @@ def store_unparseable(paper: Paper, settings: Settings) -> None:
             }
         ],
     )
-    logger.warning("Flagged paper %s as unparseable in ChromaDB.", paper.arxiv_id)
+    logger.warning("Flagged paper %s as unparseable in ChromaDB.", paper.paper_id)

@@ -46,7 +46,7 @@ def make_paper():
     """Factory fixture for creating Paper objects."""
     def _make_paper(**overrides) -> Paper:
         defaults = dict(
-            arxiv_id="2401.00001",
+            paper_id="2401.00001",
             title="Test Paper on Semantic Chunking",
             authors=["Alice Researcher", "Bob Scientist"],
             abstract="This paper explores novel approaches to text segmentation.",

@@ -43,7 +43,7 @@ class TestNetworkSmoke:
         assert isinstance(papers, list)
         for p in papers:
             assert isinstance(p, Paper)
-            assert p.arxiv_id
+            assert p.paper_id
             assert p.title
             assert len(p.authors) > 0
             assert p.pdf_path is not None
