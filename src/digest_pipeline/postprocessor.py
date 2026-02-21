@@ -3,6 +3,9 @@
 Provides additional analysis layers on top of the base summarization.
 Each function makes a separate LLM call with a specialised system prompt,
 reusing the same backoff and token-limit patterns as the summarizer.
+
+Uses litellm as the LLM adapter, enabling any provider (OpenAI, Anthropic,
+Cohere, local models, etc.) via the ``LLM_MODEL`` setting.
 """
 
 from __future__ import annotations
@@ -10,7 +13,7 @@ from __future__ import annotations
 import logging
 import time
 
-from openai import OpenAI, RateLimitError
+import litellm
 
 from digest_pipeline.config import Settings
 from digest_pipeline.fetcher import Paper
@@ -59,15 +62,16 @@ def _llm_call(
     label: str,
 ) -> str:
     """Shared LLM call with token limit and exponential backoff."""
-    client = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
     user_prompt = _build_user_prompt(papers)
 
     max_backoff_attempts = 5
     for attempt in range(1, max_backoff_attempts + 1):
         try:
-            response = client.chat.completions.create(
+            response = litellm.completion(
                 model=settings.llm_model,
                 max_tokens=settings.llm_max_tokens,
+                api_key=settings.llm_api_key,
+                api_base=settings.llm_api_base,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -76,7 +80,7 @@ def _llm_call(
             content = response.choices[0].message.content or ""
             logger.info("LLM %s complete (%d chars).", label, len(content))
             return content
-        except RateLimitError as exc:
+        except litellm.RateLimitError as exc:
             wait = 2 ** attempt
             logger.warning(
                 "Rate-limited during %s (attempt %d/%d). Retrying in %ds: %s",
