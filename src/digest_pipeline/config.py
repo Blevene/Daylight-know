@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     openalex_max_results: int = Field(default=20)
     openalex_query: str = Field(default="machine learning")
     openalex_fields: list[str] = Field(default_factory=list)
+    openalex_interest_profile: str = Field(default="")
+    openalex_interest_keywords: list[str] = Field(default_factory=list)
+    openalex_fetch_pool: int = Field(default=100)
 
     # ── GitHub (optional) ───────────────────────────────────────
     github_enabled: bool = Field(default=False)
