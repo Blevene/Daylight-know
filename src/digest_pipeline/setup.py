@@ -24,6 +24,7 @@ from digest_pipeline.arxiv_topics import (
     search_topics,
     validate_topics,
 )
+from digest_pipeline.openalex_fetcher import OPENALEX_FIELDS
 
 console = Console()
 
@@ -233,6 +234,63 @@ def _type_codes(selected: list[str]) -> None:
         console.print(f"    [red]✗[/] Invalid code: {code}")
 
 
+# ── OpenAlex field selector ───────────────────────────────────
+
+
+def _collect_openalex_fields() -> list[str]:
+    """Interactive multi-select for OpenAlex academic fields."""
+    field_names = list(OPENALEX_FIELDS.keys())
+
+    console.print("\n  [bold]Select OpenAlex fields to filter by:[/]")
+    console.print("  [dim]Enter numbers (comma-separated), 'all', or press Enter to skip.[/]\n")
+
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    half = (len(field_names) + 1) // 2
+    for i in range(half):
+        left = f"  {i + 1:>2}. {field_names[i]}"
+        right_idx = i + half
+        if right_idx < len(field_names):
+            right = f"{right_idx + 1:>2}. {field_names[right_idx]}"
+        else:
+            right = ""
+        table.add_row(left, right)
+
+    console.print(table)
+
+    try:
+        picks = console.input("\n  Fields (numbers, 'all', or Enter to skip): ").strip()
+    except EOFError:
+        return []
+
+    if not picks:
+        return []
+
+    if picks.lower() == "all":
+        return field_names
+
+    selected: list[str] = []
+    for p in picks.split(","):
+        p = p.strip()
+        try:
+            idx = int(p) - 1
+            if 0 <= idx < len(field_names):
+                name = field_names[idx]
+                if name not in selected:
+                    selected.append(name)
+                    console.print(f"    [green]✓[/] {name}")
+            else:
+                console.print(f"    [yellow]⚠ Invalid number: {p}[/]")
+        except ValueError:
+            match = [f for f in field_names if f.lower() == p.lower()]
+            if match and match[0] not in selected:
+                selected.append(match[0])
+                console.print(f"    [green]✓[/] {match[0]}")
+            else:
+                console.print(f"    [yellow]⚠ Unknown field: {p}[/]")
+
+    return selected
+
+
 # ── Config collectors ────────────────────────────────────────────
 
 
@@ -333,22 +391,22 @@ def _collect_optional_settings() -> dict[str, str]:
     else:
         config["HUGGINGFACE_ENABLED"] = "false"
 
-    if _prompt_bool("Enable Semantic Scholar integration?", default=False):
-        config["SEMANTICSCHOLAR_ENABLED"] = "true"
-        config["SEMANTICSCHOLAR_API_KEY"] = _prompt(
-            "Semantic Scholar API key (optional, press Enter to skip)"
+    if _prompt_bool("Enable OpenAlex integration?", default=False):
+        config["OPENALEX_ENABLED"] = "true"
+        config["OPENALEX_API_KEY"] = _prompt(
+            "OpenAlex API key (optional, press Enter to skip)"
         )
-        config["SEMANTICSCHOLAR_MAX_RESULTS"] = _prompt("Semantic Scholar max results", "20")
-        config["SEMANTICSCHOLAR_QUERY"] = _prompt("Semantic Scholar search query", "machine learning")
-        _print_info(
-            "Fields of study: Computer Science, Mathematics, Physics, Chemistry, "
-            "Biology, Medicine, Engineering, Economics, etc."
+        config["OPENALEX_EMAIL"] = _prompt(
+            "Email for OpenAlex polite pool (optional)"
         )
-        fields = _prompt("Fields of study filter (comma-separated, optional)")
-        if fields:
-            config["SEMANTICSCHOLAR_FIELDS_OF_STUDY"] = fields
+        config["OPENALEX_MAX_RESULTS"] = _prompt("OpenAlex max results", "20")
+        config["OPENALEX_QUERY"] = _prompt("OpenAlex search query", "machine learning")
+        selected_fields = _collect_openalex_fields()
+        if selected_fields:
+            import json as _json
+            config["OPENALEX_FIELDS"] = _json.dumps(selected_fields)
     else:
-        config["SEMANTICSCHOLAR_ENABLED"] = "false"
+        config["OPENALEX_ENABLED"] = "false"
 
     if _prompt_bool("Enable GitHub trending integration?", default=False):
         config["GITHUB_ENABLED"] = "true"
@@ -468,13 +526,14 @@ def _write_env_file(config: dict[str, str], path: Path) -> None:
             ["HUGGINGFACE_ENABLED", "HUGGINGFACE_TOKEN", "HUGGINGFACE_MAX_RESULTS"],
         ),
         (
-            "Optional: Semantic Scholar",
+            "Optional: OpenAlex",
             [
-                "SEMANTICSCHOLAR_ENABLED",
-                "SEMANTICSCHOLAR_API_KEY",
-                "SEMANTICSCHOLAR_MAX_RESULTS",
-                "SEMANTICSCHOLAR_QUERY",
-                "SEMANTICSCHOLAR_FIELDS_OF_STUDY",
+                "OPENALEX_ENABLED",
+                "OPENALEX_API_KEY",
+                "OPENALEX_EMAIL",
+                "OPENALEX_MAX_RESULTS",
+                "OPENALEX_QUERY",
+                "OPENALEX_FIELDS",
             ],
         ),
         (
@@ -483,6 +542,12 @@ def _write_env_file(config: dict[str, str], path: Path) -> None:
         ),
     ]
 
+    def _format_env_line(key: str, value: str) -> str:
+        """Format a key=value line; skip extra quoting for JSON arrays."""
+        if value.startswith("["):
+            return f"{key}={value}"
+        return f'{key}="{value}"'
+
     lines: list[str] = []
     written_keys: set[str] = set()
 
@@ -490,7 +555,7 @@ def _write_env_file(config: dict[str, str], path: Path) -> None:
         section_lines: list[str] = []
         for key in keys:
             if key in config:
-                section_lines.append(f'{key}="{config[key]}"')
+                section_lines.append(_format_env_line(key, config[key]))
                 written_keys.add(key)
 
         if section_lines:
@@ -503,7 +568,7 @@ def _write_env_file(config: dict[str, str], path: Path) -> None:
     if remaining:
         lines.append("# ── Other Settings ─────────────────────────────────────────")
         for key, value in remaining.items():
-            lines.append(f'{key}="{value}"')
+            lines.append(_format_env_line(key, value))
         lines.append("")
 
     path.write_text("\n".join(lines) + "\n")
@@ -547,7 +612,7 @@ def run_setup_wizard(env_path: str | None = None) -> None:
     console.print(Panel(
         "[bold]Welcome to the Digest Pipeline Setup Wizard![/]\n\n"
         "This wizard will guide you through configuring your\n"
-        "research digest pipeline (arXiv, HuggingFace, Semantic Scholar).\n\n"
+        "research digest pipeline (arXiv, HuggingFace, OpenAlex).\n\n"
         "[dim]Press Enter to accept default values shown in brackets.[/]",
         title="🔬 Digest Pipeline Setup",
         border_style="cyan",

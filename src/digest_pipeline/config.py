@@ -51,12 +51,13 @@ class Settings(BaseSettings):
     huggingface_token: str = Field(default="")
     huggingface_max_results: int = Field(default=20)
 
-    # ── Semantic Scholar (optional) ──────────────────────────────
-    semanticscholar_enabled: bool = Field(default=False)
-    semanticscholar_api_key: str = Field(default="")
-    semanticscholar_max_results: int = Field(default=20)
-    semanticscholar_query: str = Field(default="machine learning")
-    semanticscholar_fields_of_study: list[str] = Field(default_factory=list)
+    # ── OpenAlex (optional) ────────────────────────────────────────
+    openalex_enabled: bool = Field(default=False)
+    openalex_api_key: str = Field(default="")
+    openalex_email: str = Field(default="")
+    openalex_max_results: int = Field(default=20)
+    openalex_query: str = Field(default="machine learning")
+    openalex_fields: list[str] = Field(default_factory=list)
 
     # ── GitHub (optional) ───────────────────────────────────────
     github_enabled: bool = Field(default=False)

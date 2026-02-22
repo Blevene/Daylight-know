@@ -96,8 +96,9 @@ def test_fetch_hf_daily_respects_max_results(mock_get, make_settings):
     assert len(papers) <= 3
 
 
+@patch("digest_pipeline.hf_fetcher.time.sleep")
 @patch("digest_pipeline.hf_fetcher.requests.get", side_effect=Exception("network error"))
-def test_fetch_hf_daily_handles_error(mock_get, make_settings):
+def test_fetch_hf_daily_handles_error(mock_get, mock_sleep, make_settings):
     settings = make_settings(huggingface_enabled=True)
     papers = fetch_hf_daily(settings)
 

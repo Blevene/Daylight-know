@@ -3,13 +3,11 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from tests.conftest import make_paper, make_settings
-
 from digest_pipeline.summarizer import summarize
 
 
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_summarize_success(mock_completion):
+def test_summarize_success(mock_completion, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = json.dumps({"paper_1": "This is a summary."})
     mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -29,7 +27,7 @@ def test_summarize_success(mock_completion):
 
 
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_summarize_with_github_section(mock_completion):
+def test_summarize_with_github_section(mock_completion, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = json.dumps({"paper_1": "Summary."})
     mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -42,7 +40,7 @@ def test_summarize_with_github_section(mock_completion):
 
 
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_summarize_empty_content_returns_empty_dict(mock_completion):
+def test_summarize_empty_content_returns_empty_dict(mock_completion, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = None
     mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -52,7 +50,7 @@ def test_summarize_empty_content_returns_empty_dict(mock_completion):
 
 
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_summarize_malformed_json_returns_empty_dict(mock_completion):
+def test_summarize_malformed_json_returns_empty_dict(mock_completion, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = "This is not valid JSON at all"
     mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -62,7 +60,7 @@ def test_summarize_malformed_json_returns_empty_dict(mock_completion):
 
 
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_summarize_non_object_json_returns_empty_dict(mock_completion):
+def test_summarize_non_object_json_returns_empty_dict(mock_completion, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = '["an", "array"]'
     mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -72,7 +70,7 @@ def test_summarize_non_object_json_returns_empty_dict(mock_completion):
 
 
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_summarize_multiple_papers_schema(mock_completion):
+def test_summarize_multiple_papers_schema(mock_completion, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = json.dumps({
         "paper_1": "Summary 1",

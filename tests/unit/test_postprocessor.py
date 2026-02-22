@@ -3,8 +3,6 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from tests.conftest import make_paper, make_settings
-
 from digest_pipeline.postprocessor import (
     CRITIQUES_SYSTEM_PROMPT,
     IMPLICATIONS_SYSTEM_PROMPT,
@@ -14,7 +12,7 @@ from digest_pipeline.postprocessor import (
 
 
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_extract_implications_success(mock_completion):
+def test_extract_implications_success(mock_completion, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = json.dumps({"paper_1": "Practitioners can apply..."})
     mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -31,7 +29,7 @@ def test_extract_implications_success(mock_completion):
 
 
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_generate_critiques_success(mock_completion):
+def test_generate_critiques_success(mock_completion, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = json.dumps({"paper_1": "The methodology has strengths..."})
     mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -48,7 +46,7 @@ def test_generate_critiques_success(mock_completion):
 
 
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_llm_call_respects_max_tokens(mock_completion):
+def test_llm_call_respects_max_tokens(mock_completion, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = json.dumps({"paper_1": "result"})
     mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -60,7 +58,7 @@ def test_llm_call_respects_max_tokens(mock_completion):
 
 
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_llm_call_empty_content_returns_empty_dict(mock_completion):
+def test_llm_call_empty_content_returns_empty_dict(mock_completion, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = None
     mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -70,7 +68,7 @@ def test_llm_call_empty_content_returns_empty_dict(mock_completion):
 
 
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_llm_call_malformed_json_returns_empty_dict(mock_completion):
+def test_llm_call_malformed_json_returns_empty_dict(mock_completion, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = "Not JSON at all."
     mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -80,7 +78,7 @@ def test_llm_call_malformed_json_returns_empty_dict(mock_completion):
 
 
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_schema_has_explicit_keys(mock_completion):
+def test_schema_has_explicit_keys(mock_completion, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = json.dumps({"paper_1": "a", "paper_2": "b"})
     mock_completion.return_value = MagicMock(choices=[mock_choice])

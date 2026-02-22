@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import smtplib
+import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import TYPE_CHECKING
@@ -55,6 +56,12 @@ HTML_TEMPLATE = _html_env.from_string("""\
   .source-badge { display: inline-block; font-size: 0.75em; padding: 2px 8px;
                   border-radius: 4px; background: #e8e8f0; color: #555;
                   margin-top: 4px; }
+  .upvote-badge { display: inline-block; font-size: 0.75em; padding: 2px 8px;
+                  border-radius: 4px; background: #fff3e0; color: #e65100;
+                  margin-top: 4px; margin-left: 4px; }
+  .field-tag { display: inline-block; font-size: 0.75em; padding: 2px 6px;
+               border-radius: 3px; background: #e8f5e9; color: #2e7d32;
+               margin: 2px 2px 0 0; }
   .section { line-height: 1.6; }
   .paper { margin-bottom: 10px; }
   hr { border: none; border-top: 1px solid #e2e2e2; margin: 30px 0; }
@@ -73,8 +80,14 @@ HTML_TEMPLATE = _html_env.from_string("""\
     <h2><a href="{{ paper.url }}">{{ paper.title }}</a></h2>
     <p class="authors">{{ paper.authors | join(', ') }}</p>
     <span class="source-badge">{{ paper.source }}</span>
+    {% if paper.upvotes %}
+    <span class="upvote-badge">&#9650; {{ paper.upvotes }} upvotes</span>
+    {% endif %}
     {% if paper.categories %}
     <p class="categories">{{ paper.categories | join(' · ') }}</p>
+    {% endif %}
+    {% if paper.fields_of_study %}
+    <p>{% for f in paper.fields_of_study %}<span class="field-tag">{{ f }}</span>{% endfor %}</p>
     {% endif %}
     {% if paper.summary %}
     <h3>Summary</h3>
@@ -118,8 +131,14 @@ Daily Research Digest — {{ date }}
 {{ paper.url }}
 Authors: {{ paper.authors | join(', ') }}
 Source: {{ paper.source }}
+{% if paper.upvotes %}
+Upvotes: {{ paper.upvotes }}
+{% endif %}
 {% if paper.categories %}
 Categories: {{ paper.categories | join(', ') }}
+{% endif %}
+{% if paper.fields_of_study %}
+Fields of Study: {{ paper.fields_of_study | join(', ') }}
 {% endif %}
 {% if paper.summary %}
 
@@ -209,7 +228,7 @@ def send_digest(
 
     logger.info("Sending digest email via %s:%d.", settings.smtp_host, settings.smtp_port)
     server = smtplib.SMTP(settings.smtp_host, settings.smtp_port)
-    server.starttls()
+    server.starttls(context=ssl.create_default_context())
     with server:
         server.login(settings.smtp_user, settings.smtp_password)
         server.send_message(msg)

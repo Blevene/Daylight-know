@@ -35,6 +35,9 @@ class StoredChunk:
     published_date: str
     chunk_index: int
     text: str
+    categories: str = ""
+    upvotes: int = 0
+    fields_of_study: str = ""
 
 
 def _get_collection(settings: Settings) -> chromadb.Collection:
@@ -78,6 +81,9 @@ def store_chunks(
             "url": paper.url,
             "published_date": paper.published.isoformat(),
             "chunk_index": chunk.chunk_index,
+            "categories": ", ".join(paper.categories),
+            "upvotes": paper.upvotes,
+            "fields_of_study": ", ".join(paper.fields_of_study),
         }
         ids.append(doc_id)
         documents.append(chunk.text)
@@ -92,6 +98,9 @@ def store_chunks(
                 published_date=metadata["published_date"],
                 chunk_index=chunk.chunk_index,
                 text=chunk.text,
+                categories=metadata["categories"],
+                upvotes=paper.upvotes,
+                fields_of_study=metadata["fields_of_study"],
             )
         )
 
@@ -116,6 +125,9 @@ def store_unparseable(paper: Paper, settings: Settings) -> None:
                 "published_date": paper.published.isoformat(),
                 "chunk_index": -1,
                 "unparseable": True,
+                "categories": ", ".join(paper.categories),
+                "upvotes": paper.upvotes,
+                "fields_of_study": ", ".join(paper.fields_of_study),
             }
         ],
     )

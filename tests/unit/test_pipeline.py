@@ -58,6 +58,25 @@ def test_build_analyses_passes_categories():
     assert analyses[0].categories == ["cs.AI", "cs.LG"]
 
 
+def test_build_analyses_passes_upvotes_and_fields_of_study():
+    papers = [
+        _make_paper(
+            title="HF Paper",
+            url="http://hf",
+            authors=["A"],
+            source="huggingface",
+            upvotes=42,
+            fields_of_study=["Computer Science", "Mathematics"],
+        ),
+    ]
+    summaries = {"paper_1": "Sum 1"}
+
+    analyses = _build_analyses(papers, summaries, {}, {})
+
+    assert analyses[0].upvotes == 42
+    assert analyses[0].fields_of_study == ["Computer Science", "Mathematics"]
+
+
 @patch("digest_pipeline.pipeline.fetch_papers", return_value=[])
 def test_run_no_papers(mock_fetch, make_settings):
     """Pipeline exits gracefully when no papers are found."""

@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class Paper:
     """Lightweight representation of a fetched research paper.
 
-    Works with any source (arXiv, HuggingFace, Semantic Scholar, etc.).
+    Works with any source (arXiv, HuggingFace, OpenAlex, etc.).
     """
 
     paper_id: str
@@ -40,6 +40,8 @@ class Paper:
     source: str = "arxiv"
     pdf_path: Path | None = None
     categories: list[str] = field(default_factory=list)
+    upvotes: int = 0
+    fields_of_study: list[str] = field(default_factory=list)
 
 
 def _within_last_24h(dt: datetime) -> bool:
@@ -49,7 +51,7 @@ def _within_last_24h(dt: datetime) -> bool:
     return dt >= cutoff
 
 
-def _download_pdf(url: str, dest: Path, max_retries: int = 3) -> bool:
+def download_pdf(url: str, dest: Path, max_retries: int = 3) -> bool:
     """Download *url* to *dest*, retrying up to *max_retries* times.
 
     Returns ``True`` on success, ``False`` after all retries exhausted.
@@ -95,7 +97,7 @@ def fetch_papers(settings: Settings) -> list[Paper]:
         pdf_url = result.pdf_url
         pdf_dest = tmp_dir / f"{paper_id}.pdf"
 
-        if not _download_pdf(pdf_url, pdf_dest, max_retries=settings.pdf_download_max_retries):
+        if not download_pdf(pdf_url, pdf_dest, max_retries=settings.pdf_download_max_retries):
             logger.error("Skipping paper %s — PDF download failed after %d attempts.", paper_id, settings.pdf_download_max_retries)
             continue
 

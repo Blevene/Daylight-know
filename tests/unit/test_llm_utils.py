@@ -5,8 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tests.conftest import make_paper, make_settings
-
 from digest_pipeline.llm_utils import build_response_format, build_user_prompt, llm_call
 
 
@@ -35,20 +33,42 @@ class TestBuildResponseFormat:
 
 
 class TestBuildUserPrompt:
-    def test_single_paper(self):
+    def test_single_paper(self, make_paper):
         prompt = build_user_prompt([make_paper()])
         assert "Test Paper" in prompt
         assert "Alice, Bob" in prompt
         assert "This paper explores testing." in prompt
 
-    def test_multiple_papers(self):
+    def test_multiple_papers(self, make_paper):
         papers = [make_paper(), make_paper(title="Second Paper")]
         prompt = build_user_prompt(papers)
         assert "Test Paper" in prompt
         assert "Second Paper" in prompt
         assert "---" in prompt
 
-    def test_github_section(self):
+    def test_includes_source(self, make_paper):
+        prompt = build_user_prompt([make_paper(source="openalex")])
+        assert "**Source:** openalex" in prompt
+
+    def test_includes_categories(self, make_paper):
+        prompt = build_user_prompt([make_paper(categories=["cs.AI", "cs.LG"])])
+        assert "**Categories:** cs.AI, cs.LG" in prompt
+
+    def test_includes_fields_of_study(self, make_paper):
+        prompt = build_user_prompt([make_paper(fields_of_study=["Computer Science", "Biology"])])
+        assert "**Fields of Study:** Computer Science, Biology" in prompt
+
+    def test_includes_upvotes(self, make_paper):
+        prompt = build_user_prompt([make_paper(upvotes=42)])
+        assert "**Community Upvotes:** 42" in prompt
+
+    def test_omits_empty_optional_fields(self, make_paper):
+        prompt = build_user_prompt([make_paper()])
+        assert "Categories:" not in prompt
+        assert "Fields of Study:" not in prompt
+        assert "Community Upvotes:" not in prompt
+
+    def test_github_section(self, make_paper):
         prompt = build_user_prompt([make_paper()], github_section="Repo1\nRepo2")
         assert "Trending GitHub Repositories" in prompt
         assert "Repo1" in prompt
@@ -56,7 +76,7 @@ class TestBuildUserPrompt:
 
 class TestLlmCall:
     @patch("digest_pipeline.llm_utils.litellm.completion")
-    def test_success(self, mock_completion):
+    def test_success(self, mock_completion, make_paper, make_settings):
         mock_choice = MagicMock()
         mock_choice.message.content = json.dumps({"paper_1": "Result."})
         mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -65,7 +85,7 @@ class TestLlmCall:
         assert result == {"paper_1": "Result."}
 
     @patch("digest_pipeline.llm_utils.litellm.completion")
-    def test_empty_content_returns_empty(self, mock_completion):
+    def test_empty_content_returns_empty(self, mock_completion, make_paper, make_settings):
         mock_choice = MagicMock()
         mock_choice.message.content = None
         mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -74,7 +94,7 @@ class TestLlmCall:
         assert result == {}
 
     @patch("digest_pipeline.llm_utils.litellm.completion")
-    def test_malformed_json_returns_empty(self, mock_completion):
+    def test_malformed_json_returns_empty(self, mock_completion, make_paper, make_settings):
         mock_choice = MagicMock()
         mock_choice.message.content = "not json"
         mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -83,7 +103,7 @@ class TestLlmCall:
         assert result == {}
 
     @patch("digest_pipeline.llm_utils.litellm.completion")
-    def test_non_object_json_returns_empty(self, mock_completion):
+    def test_non_object_json_returns_empty(self, mock_completion, make_paper, make_settings):
         mock_choice = MagicMock()
         mock_choice.message.content = '["array"]'
         mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -92,7 +112,7 @@ class TestLlmCall:
         assert result == {}
 
     @patch("digest_pipeline.llm_utils.litellm.completion")
-    def test_values_coerced_to_str(self, mock_completion):
+    def test_values_coerced_to_str(self, mock_completion, make_paper, make_settings):
         mock_choice = MagicMock()
         mock_choice.message.content = json.dumps({"paper_1": 42})
         mock_completion.return_value = MagicMock(choices=[mock_choice])

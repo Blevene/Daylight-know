@@ -4,7 +4,7 @@ Ties together all modules to execute the full daily digest workflow:
 
   1. Fetch papers from arXiv (24-hour window)
   1b. (Optional) Fetch papers from HuggingFace Daily Papers
-  1c. (Optional) Fetch papers from Semantic Scholar
+  1c. (Optional) Fetch papers from OpenAlex
   2. Extract text from PDFs (PyMuPDF) — or use abstract for PDF-less papers
   3. Chunk text semantically (Chonkie)
   4. Store chunks + embeddings in ChromaDB
@@ -19,14 +19,16 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 from digest_pipeline.chunker import chunk_text
 from digest_pipeline.config import Settings, get_settings
 from digest_pipeline.emailer import send_digest
 from digest_pipeline.extractor import extract_text
-from digest_pipeline.fetcher import Paper, fetch_papers
+from digest_pipeline.fetcher import Paper, download_pdf, fetch_papers
 from digest_pipeline.github_trending import fetch_trending, format_for_prompt
 from digest_pipeline.hf_fetcher import (
     HFDailyPaper,
@@ -35,7 +37,7 @@ from digest_pipeline.hf_fetcher import (
     reconcile_hf_papers,
 )
 from digest_pipeline.postprocessor import extract_implications, generate_critiques
-from digest_pipeline.s2_fetcher import fetch_s2_papers
+from digest_pipeline.openalex_fetcher import fetch_openalex_papers
 from digest_pipeline.summarizer import summarize
 from digest_pipeline.vectorstore import VectorStoreError, store_chunks, store_unparseable
 
@@ -51,6 +53,8 @@ class PaperAnalysis:
     source: str = "arxiv"
     authors: list[str] = field(default_factory=list)
     categories: list[str] = field(default_factory=list)
+    upvotes: int = 0
+    fields_of_study: list[str] = field(default_factory=list)
     summary: str = ""
     implications: str = ""
     critique: str = ""
@@ -72,6 +76,8 @@ def _build_analyses(
             source=paper.source,
             authors=paper.authors,
             categories=paper.categories,
+            upvotes=paper.upvotes,
+            fields_of_study=paper.fields_of_study,
             summary=summaries.get(key, ""),
             implications=implications.get(key, ""),
             critique=critiques.get(key, ""),
@@ -94,14 +100,36 @@ def run(settings: Settings | None = None) -> None:
     hf_trending: list[HFDailyPaper] = []
     if settings.huggingface_enabled:
         hf_daily = fetch_hf_daily(settings)
+        # Normalize all arXiv IDs (strips version suffixes like "v2") so that
+        # e.g. "2401.00001v2" from arXiv matches "2401.00001" from HuggingFace.
         known_ids = {normalize_arxiv_id(p.paper_id) for p in papers}
         hf_new, hf_trending = reconcile_hf_papers(hf_daily, known_ids)
         papers.extend(hf_new)
 
-    if settings.semanticscholar_enabled:
-        s2_papers = fetch_s2_papers(settings)
-        logger.info("Fetched %d papers from Semantic Scholar.", len(s2_papers))
-        papers.extend(s2_papers)
+        # Download PDFs for HuggingFace-only papers via their arXiv ID.
+        for paper in hf_new:
+            # paper_id is "hf_{arxiv_id}" — extract the raw arXiv ID.
+            raw_arxiv_id = paper.paper_id.removeprefix("hf_")
+            pdf_url = f"https://arxiv.org/pdf/{raw_arxiv_id}"
+            pdf_dest = Path(tempfile.mkdtemp(prefix="hf_pdfs_")) / f"{raw_arxiv_id}.pdf"
+            if download_pdf(pdf_url, pdf_dest):
+                paper.pdf_path = pdf_dest
+            else:
+                logger.info("No PDF for HF paper %s — will use abstract.", paper.paper_id)
+
+    if settings.openalex_enabled:
+        # Build set of known DOIs to avoid duplicating arXiv/HF papers.
+        all_known_dois: set[str] = set()
+        for p in papers:
+            if p.source == "arxiv":
+                raw_id = p.paper_id.split("v")[0]  # strip version
+                all_known_dois.add(f"10.48550/arXiv.{raw_id}")
+            elif p.source == "huggingface":
+                raw_id = p.paper_id.removeprefix("hf_").split("v")[0]
+                all_known_dois.add(f"10.48550/arXiv.{raw_id}")
+        oa_papers = fetch_openalex_papers(settings, known_paper_ids=all_known_dois)
+        logger.info("Fetched %d papers from OpenAlex.", len(oa_papers))
+        papers.extend(oa_papers)
 
     if not papers:
         logger.warning("No papers found from any source. Exiting.")
@@ -123,7 +151,7 @@ def run(settings: Settings | None = None) -> None:
 
             text = extraction.text
         else:
-            # Papers without PDFs (e.g. HuggingFace, Semantic Scholar) —
+            # Papers without PDFs (e.g. HuggingFace, OpenAlex) —
             # use the abstract directly for chunking/storage.
             text = paper.abstract
             if not text:

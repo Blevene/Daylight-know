@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -61,6 +62,42 @@ def normalize_arxiv_id(raw_id: str) -> str:
     return re.sub(r"v\d+$", "", raw_id)
 
 
+def _request_with_retry(url: str, **kwargs) -> requests.Response:
+    """GET *url* with up to 2 retries on failure (exponential backoff).
+
+    For HTTP 429 (rate limit), respects the ``Retry-After`` header if
+    present, otherwise waits 30s.
+    """
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            resp = requests.get(url, **kwargs)
+            resp.raise_for_status()
+            return resp
+        except requests.exceptions.HTTPError as exc:
+            if attempt == max_attempts:
+                raise
+            status = exc.response.status_code if exc.response is not None else 0
+            if status == 429:
+                retry_after = exc.response.headers.get("Retry-After")
+                wait = int(retry_after) if retry_after and retry_after.isdigit() else 30
+                logger.warning(
+                    "HF rate-limited (429), attempt %d/%d — waiting %ds…",
+                    attempt, max_attempts, wait,
+                )
+            else:
+                wait = 2 ** attempt
+                logger.warning("HF request attempt %d/%d failed (%s), retrying in %ds…", attempt, max_attempts, status, wait)
+            time.sleep(wait)
+        except Exception:
+            if attempt == max_attempts:
+                raise
+            wait = 2 ** attempt
+            logger.warning("HF request attempt %d/%d failed, retrying in %ds…", attempt, max_attempts, wait)
+            time.sleep(wait)
+    raise RuntimeError("unreachable")  # pragma: no cover
+
+
 def fetch_hf_daily(settings: Settings) -> list[HFDailyPaper]:
     """Fetch recent papers from HuggingFace Daily Papers.
 
@@ -78,8 +115,7 @@ def fetch_hf_daily(settings: Settings) -> list[HFDailyPaper]:
         headers["Authorization"] = f"Bearer {settings.huggingface_token}"
 
     try:
-        resp = requests.get(HF_DAILY_PAPERS_URL, headers=headers, timeout=30)
-        resp.raise_for_status()
+        resp = _request_with_retry(HF_DAILY_PAPERS_URL, headers=headers, timeout=30)
         data = resp.json()
     except Exception:
         logger.exception("Failed to fetch HuggingFace Daily Papers.")
@@ -162,6 +198,7 @@ def reconcile_hf_papers(
                     published=hf.published,
                     source="huggingface",
                     pdf_path=None,
+                    upvotes=hf.upvotes,
                 )
             )
 

@@ -162,6 +162,86 @@ def test_build_email_mixed_categories(make_settings):
     assert "Paper Without Cats" in html_body
 
 
+def test_build_email_with_upvotes(make_settings):
+    settings = make_settings()
+    papers = [
+        PaperAnalysis(
+            title="HF Paper",
+            url="https://huggingface.co/papers/2401.00001",
+            source="huggingface",
+            authors=["Alice"],
+            upvotes=42,
+            summary="Test summary",
+        ),
+    ]
+    msg = _build_email(papers, "2025-01-15", settings)
+    payloads = msg.get_payload()
+    html_body = payloads[1].get_payload(decode=True).decode()
+    plain_body = payloads[0].get_payload(decode=True).decode()
+    assert "42 upvotes" in html_body
+    assert "upvote-badge" in html_body
+    assert "Upvotes: 42" in plain_body
+
+
+def test_build_email_without_upvotes(make_settings):
+    settings = make_settings()
+    papers = [
+        PaperAnalysis(
+            title="Test Paper",
+            url="https://arxiv.org/abs/2401.00001",
+            authors=["Alice"],
+            summary="Test summary",
+        ),
+    ]
+    msg = _build_email(papers, "2025-01-15", settings)
+    payloads = msg.get_payload()
+    html_body = payloads[1].get_payload(decode=True).decode()
+    plain_body = payloads[0].get_payload(decode=True).decode()
+    assert "0 upvotes" not in html_body
+    assert "Upvotes:" not in plain_body
+
+
+def test_build_email_with_fields_of_study(make_settings):
+    settings = make_settings()
+    papers = [
+        PaperAnalysis(
+            title="OA Paper",
+            url="https://openalex.org/W123",
+            source="openalex",
+            authors=["Bob"],
+            fields_of_study=["Computer Science", "Mathematics"],
+            summary="Test summary",
+        ),
+    ]
+    msg = _build_email(papers, "2025-01-15", settings)
+    payloads = msg.get_payload()
+    html_body = payloads[1].get_payload(decode=True).decode()
+    plain_body = payloads[0].get_payload(decode=True).decode()
+    assert "Computer Science" in html_body
+    assert "Mathematics" in html_body
+    assert "field-tag" in html_body
+    assert "Fields of Study: Computer Science, Mathematics" in plain_body
+
+
+def test_build_email_without_fields_of_study(make_settings):
+    settings = make_settings()
+    papers = [
+        PaperAnalysis(
+            title="Test Paper",
+            url="https://arxiv.org/abs/2401.00001",
+            authors=["Alice"],
+            summary="Test summary",
+        ),
+    ]
+    msg = _build_email(papers, "2025-01-15", settings)
+    payloads = msg.get_payload()
+    html_body = payloads[1].get_payload(decode=True).decode()
+    plain_body = payloads[0].get_payload(decode=True).decode()
+    # The field-tag class only appears in <style>; no actual field tags rendered
+    assert 'class="field-tag"' not in html_body
+    assert "Fields of Study:" not in plain_body
+
+
 def test_dry_run_does_not_send(make_settings, capsys):
     settings = make_settings(dry_run=True)
     papers = _make_papers()

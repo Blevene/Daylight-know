@@ -48,12 +48,20 @@ def build_user_prompt(papers: list[Paper], github_section: str = "") -> str:
     """Format papers (and optional GitHub section) into the LLM user message."""
     parts: list[str] = []
     for i, p in enumerate(papers, 1):
-        parts.append(
-            f"### Paper {i}: {p.title}\n"
-            f"**Authors:** {', '.join(p.authors)}\n"
-            f"**URL:** {p.url}\n\n"
-            f"{p.abstract}\n"
-        )
+        lines = [
+            f"### Paper {i}: {p.title}\n",
+            f"**Source:** {p.source}\n",
+            f"**Authors:** {', '.join(p.authors)}\n",
+        ]
+        if p.categories:
+            lines.append(f"**Categories:** {', '.join(p.categories)}\n")
+        if p.fields_of_study:
+            lines.append(f"**Fields of Study:** {', '.join(p.fields_of_study)}\n")
+        if p.upvotes:
+            lines.append(f"**Community Upvotes:** {p.upvotes}\n")
+        lines.append(f"**URL:** {p.url}\n\n")
+        lines.append(f"{p.abstract}\n")
+        parts.append("".join(lines))
     prompt = "\n---\n".join(parts)
     if github_section:
         prompt += f"\n\n---\n## Trending GitHub Repositories\n{github_section}"
