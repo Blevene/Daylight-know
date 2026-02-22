@@ -7,14 +7,19 @@ and the main digest pipeline.
 
 from __future__ import annotations
 
+import json
 import logging
+
+import litellm
 
 from digest_pipeline.config import Settings
 from digest_pipeline.fetcher import Paper
+from digest_pipeline.prompts import load_prompt
 
 logger = logging.getLogger(__name__)
 
 KEYWORD_BOOST = 2
+BATCH_SIZE = 20
 
 
 def compute_keyword_scores(papers: list[Paper], keywords: list[str]) -> list[int]:
@@ -40,3 +45,64 @@ def compute_keyword_scores(papers: list[Paper], keywords: list[str]) -> list[int
                 score += KEYWORD_BOOST
         scores.append(score)
     return scores
+
+
+def score_batch_with_llm(papers: list[Paper], settings: Settings) -> list[int]:
+    """Score a batch of papers using the LLM.
+
+    Sends paper titles and abstracts to the configured LLM with the
+    interest profile. Returns a list of integer scores (1-10) per paper.
+    On failure, returns zeros for graceful degradation.
+    """
+    if not papers:
+        return []
+
+    system_prompt = load_prompt("ranker").replace(
+        "{interest_profile}", settings.openalex_interest_profile
+    )
+
+    # Build user message with paper titles and abstracts
+    parts: list[str] = []
+    for i, p in enumerate(papers, 1):
+        parts.append(f"paper_{i}: {p.title}\n{p.abstract[:500]}")
+    user_prompt = "\n---\n".join(parts)
+
+    # Build response format expecting integer scores
+    properties = {
+        f"paper_{i}": {"type": "integer"} for i in range(1, len(papers) + 1)
+    }
+    response_format = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "relevance_scores",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": properties,
+                "required": list(properties.keys()),
+                "additionalProperties": False,
+            },
+        },
+    }
+
+    try:
+        response = litellm.completion(
+            model=settings.llm_model,
+            max_tokens=256,
+            api_key=settings.llm_api_key,
+            api_base=settings.llm_api_base,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format=response_format,
+        )
+        raw = response.choices[0].message.content or ""
+        parsed = json.loads(raw)
+        return [
+            int(parsed.get(f"paper_{i}", 0))
+            for i in range(1, len(papers) + 1)
+        ]
+    except Exception:
+        logger.warning("LLM scoring failed — falling back to zero scores.", exc_info=True)
+        return [0] * len(papers)
