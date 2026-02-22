@@ -38,6 +38,7 @@ from digest_pipeline.hf_fetcher import (
 )
 from digest_pipeline.postprocessor import extract_implications, generate_critiques
 from digest_pipeline.openalex_fetcher import fetch_openalex_papers
+from digest_pipeline.ranker import rank_papers
 from digest_pipeline.summarizer import summarize
 from digest_pipeline.vectorstore import VectorStoreError, store_chunks, store_unparseable
 
@@ -128,7 +129,8 @@ def run(settings: Settings | None = None) -> None:
                 raw_id = p.paper_id.removeprefix("hf_").split("v")[0]
                 all_known_dois.add(f"10.48550/arXiv.{raw_id}")
         oa_papers = fetch_openalex_papers(settings, known_paper_ids=all_known_dois)
-        logger.info("Fetched %d papers from OpenAlex.", len(oa_papers))
+        oa_papers = rank_papers(oa_papers, settings)
+        logger.info("OpenAlex: %d papers after ranking.", len(oa_papers))
         papers.extend(oa_papers)
 
     if not papers:
