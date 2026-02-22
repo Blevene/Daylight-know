@@ -1,36 +1,40 @@
 # Automated Research Digest Pipeline
 
-A daily digest system that fetches academic papers from arXiv, extracts and
-semantically chunks their text, stores embeddings in a vector database, and
-delivers an LLM-generated summary via email. Supports 150+ arXiv categories
-and any LLM provider through [litellm](https://github.com/BerriAI/litellm).
+A daily digest system that fetches academic papers from arXiv, HuggingFace
+Daily Papers, and OpenAlex, then extracts and semantically chunks their text,
+stores embeddings in a vector database, and delivers an LLM-generated summary
+via email. Supports 150+ arXiv categories, 26 OpenAlex academic fields, and
+any LLM provider through [litellm](https://github.com/BerriAI/litellm).
 
 ## How It Works
 
 ```
-arXiv API ──> PDF Download ──> Text Extraction (PyMuPDF)
-                                       |
-                                       v
-                              Semantic Chunking (Chonkie)
-                                       |
-                                       v
-                              Vector Storage (ChromaDB)
-                                       |
-                                       v
-               GitHub Trending ──> LLM Summarization (litellm)
-               (optional)              |
-                                       v
-                              Post-Processing (Implications & Critiques)
-                                       |
-                                       v
-                              Email Dispatch (SMTP/STARTTLS)
+arXiv API ─────────────┐
+                       ├──> PDF Download ──> Text Extraction (PyMuPDF)
+HuggingFace Daily ─────┤                            |
+  (optional)           │                            v
+                       │                   Semantic Chunking (Chonkie)
+OpenAlex API ──────────┤                            |
+  (optional,           │                            v
+   with ranking) ──────┘                   Vector Storage (ChromaDB)
+                                                    |
+                                                    v
+                            GitHub Trending ──> LLM Summarization (litellm)
+                            (optional)              |
+                                                    v
+                                           Post-Processing (Implications & Critiques)
+                                                    |
+                                                    v
+                                           Email Dispatch (SMTP/STARTTLS)
 ```
 
 ### Pipeline Steps
 
 1. **Fetch** — Queries the arXiv API for papers in your configured topics,
    filtered to the preceding 24-hour window. PDFs are downloaded with
-   configurable retry logic.
+   configurable retry logic. Optionally also fetches from HuggingFace
+   Daily Papers (community-upvoted) and OpenAlex (broad academic coverage
+   across 26 fields). Papers are deduplicated across sources by DOI.
 2. **Extract** — Uses PyMuPDF to pull raw text from each PDF. Image-only
    documents are flagged as unparseable and stored separately.
 3. **Chunk** — Splits extracted text into semantic segments using Chonkie's
@@ -55,7 +59,7 @@ Each digest email contains per-paper sections with:
 - **Summary** — Key findings and contributions
 - **Practical Implications** — Who benefits and how to apply the research
 - **Critique** — Methodological strengths, weaknesses, and open questions
-- **Metadata** — Authors, arXiv categories, and direct links
+- **Metadata** — Authors, categories/fields of study, source, and direct links
 
 ## Getting Started
 
@@ -187,6 +191,62 @@ generate one for "Mail", and use it as `SMTP_PASSWORD`.
 |---|---|---|
 | `POSTPROCESSING_IMPLICATIONS` | Generate practical implications | `true` |
 | `POSTPROCESSING_CRITIQUES` | Generate structured critiques | `true` |
+
+#### HuggingFace Daily Papers (Optional)
+
+| Variable | Description | Default |
+|---|---|---|
+| `HUGGINGFACE_ENABLED` | Include HuggingFace community papers | `false` |
+| `HUGGINGFACE_TOKEN` | HuggingFace API token (for rate limits) | — |
+| `HUGGINGFACE_MAX_RESULTS` | Max HuggingFace papers | `20` |
+
+Papers from HuggingFace are deduplicated against arXiv — those already
+fetched from arXiv appear as "trending" in a sidebar rather than being
+processed twice.
+
+#### OpenAlex (Optional)
+
+| Variable | Description | Default |
+|---|---|---|
+| `OPENALEX_ENABLED` | Include OpenAlex academic papers | `false` |
+| `OPENALEX_API_KEY` | OpenAlex API key (required since Feb 2026) | — |
+| `OPENALEX_EMAIL` | Email for polite pool (recommended) | — |
+| `OPENALEX_MAX_RESULTS` | Papers to include in digest | `20` |
+| `OPENALEX_QUERY` | Search query (used when ranking is off) | `machine learning` |
+| `OPENALEX_FIELDS` | JSON array of academic fields to filter | — |
+
+Valid fields: `Computer Science`, `Mathematics`, `Physics and Astronomy`,
+`Chemistry`, `Engineering`, `Medicine`, `Psychology`, and 19 others
+(26 total). See the setup wizard for the full list.
+
+#### Interest-Based Ranking (Optional, requires OpenAlex)
+
+When configured, the pipeline fetches a larger pool of OpenAlex papers and
+uses LLM scoring to select only the most relevant ones for your digest.
+
+| Variable | Description | Default |
+|---|---|---|
+| `OPENALEX_INTEREST_PROFILE` | Natural language description of your research interests | — |
+| `OPENALEX_INTEREST_KEYWORDS` | JSON array of boost keywords | — |
+| `OPENALEX_FETCH_POOL` | Papers to fetch before ranking | `100` |
+
+**How it works:** The ranker scores each paper using two signals:
+1. **Keyword boost** — +2 points per keyword match in title or abstract
+2. **LLM scoring** — Papers are sent in batches of 20 to your configured
+   LLM, which rates each paper 1-10 against your interest profile
+
+Papers are ranked by combined score and the top `OPENALEX_MAX_RESULTS` are
+kept. If the LLM call fails, keyword-only ranking is used as a fallback.
+If neither profile nor keywords are configured, all fetched papers pass
+through (backward compatible).
+
+**Example:**
+
+```env
+OPENALEX_INTEREST_PROFILE="AI applications including world models, frontier AI methods, memory and retrieval systems, and cybersecurity"
+OPENALEX_INTEREST_KEYWORDS=["world model","RAG","knowledge graph","cybersecurity","LLM","reasoning","agent"]
+OPENALEX_FETCH_POOL="100"
+```
 
 #### GitHub Trending (Optional)
 
@@ -325,12 +385,17 @@ src/digest_pipeline/
 ├── extractor.py         # PDF text extraction via PyMuPDF
 ├── fetcher.py           # arXiv paper fetching with retry-based PDF download
 ├── github_trending.py   # Optional GitHub trending repository module
+├── hf_fetcher.py        # HuggingFace Daily Papers fetching & deduplication
+├── llm_utils.py         # Shared LLM call utilities (backoff, structured output)
+├── openalex_fetcher.py  # OpenAlex paper fetching with field filtering
 ├── pipeline.py          # Main orchestrator and CLI entry point
 ├── postprocessor.py     # LLM post-processing (implications & critiques)
 ├── prompts/             # LLM prompt templates (Markdown)
 │   ├── summarizer.md    # Summarization prompt
 │   ├── implications.md  # Practical implications prompt
-│   └── critiques.md     # Structured critique prompt
+│   ├── critiques.md     # Structured critique prompt
+│   └── ranker.md        # Interest-based relevance scoring prompt
+├── ranker.py            # Interest-based paper ranking (keyword + LLM scoring)
 ├── setup.py             # Interactive setup wizard
 ├── summarizer.py        # LLM-powered summarization with backoff
 ├── topics_cli.py        # Topic browser CLI
