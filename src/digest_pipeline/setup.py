@@ -405,6 +405,19 @@ def _collect_optional_settings() -> dict[str, str]:
         if selected_fields:
             import json as _json
             config["OPENALEX_FIELDS"] = _json.dumps(selected_fields)
+        # Interest-based ranking
+        if _prompt_bool("Enable interest-based paper ranking?", default=False):
+            config["OPENALEX_INTEREST_PROFILE"] = _prompt(
+                "Describe your research interests (natural language)"
+            )
+            keywords = _prompt(
+                "Boost keywords (comma-separated, optional)"
+            )
+            if keywords:
+                import json as _json
+                kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+                config["OPENALEX_INTEREST_KEYWORDS"] = _json.dumps(kw_list)
+            config["OPENALEX_FETCH_POOL"] = _prompt("Papers to fetch before ranking", "100")
     else:
         config["OPENALEX_ENABLED"] = "false"
 
@@ -534,6 +547,9 @@ def _write_env_file(config: dict[str, str], path: Path) -> None:
                 "OPENALEX_MAX_RESULTS",
                 "OPENALEX_QUERY",
                 "OPENALEX_FIELDS",
+                "OPENALEX_INTEREST_PROFILE",
+                "OPENALEX_INTEREST_KEYWORDS",
+                "OPENALEX_FETCH_POOL",
             ],
         ),
         (
