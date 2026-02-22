@@ -116,13 +116,20 @@ def fetch_openalex_papers(
         if field_ids:
             filters.append("primary_topic.field.id:" + "|".join(field_ids))
 
+    # Use fetch_pool size when ranking is configured, otherwise max_results
+    has_ranking = bool(settings.openalex_interest_profile or settings.openalex_interest_keywords)
+    pool_size = settings.openalex_fetch_pool if has_ranking else settings.openalex_max_results
+
     params: dict[str, str | int] = {
-        "search": query,
         "filter": ",".join(filters),
-        "per_page": settings.openalex_max_results,
+        "per_page": pool_size,
         "sort": "publication_date:desc",
         "select": "id,title,authorships,abstract_inverted_index,publication_date,doi,open_access,topics",
     }
+
+    # Only use search term when not using interest-based ranking
+    if query and not has_ranking:
+        params["search"] = query
 
     if settings.openalex_api_key:
         params["api_key"] = settings.openalex_api_key

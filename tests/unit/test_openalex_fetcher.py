@@ -328,6 +328,47 @@ def test_fetch_openalex_papers_skips_no_id(mock_get, make_settings):
     assert papers[0].title == "Good Paper"
 
 
+@patch("digest_pipeline.openalex_fetcher.requests.get")
+def test_fetch_openalex_uses_fetch_pool_size(mock_get, make_settings):
+    """When fetch_pool is set, per_page uses fetch_pool instead of max_results."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"meta": {"count": 0}, "results": []}
+    mock_get.return_value = mock_resp
+
+    settings = make_settings(
+        openalex_enabled=True,
+        openalex_fetch_pool=100,
+        openalex_max_results=20,
+        openalex_interest_profile="I study LLMs",
+    )
+    fetch_openalex_papers(settings)
+
+    call_args = mock_get.call_args
+    params = call_args.kwargs.get("params") or call_args[1].get("params", {})
+    assert params["per_page"] == 100
+
+
+@patch("digest_pipeline.openalex_fetcher.requests.get")
+def test_fetch_openalex_no_search_when_profile_set(mock_get, make_settings):
+    """When interest_profile is configured, search param is omitted."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"meta": {"count": 0}, "results": []}
+    mock_get.return_value = mock_resp
+
+    settings = make_settings(
+        openalex_enabled=True,
+        openalex_interest_profile="I study LLMs",
+        openalex_query="machine learning",
+    )
+    fetch_openalex_papers(settings)
+
+    call_args = mock_get.call_args
+    params = call_args.kwargs.get("params") or call_args[1].get("params", {})
+    assert "search" not in params
+
+
 def test_openalex_fields_has_26_entries():
     """Verify all 26 OpenAlex fields are mapped."""
     assert len(OPENALEX_FIELDS) == 26
