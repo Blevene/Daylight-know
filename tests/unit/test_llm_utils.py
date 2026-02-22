@@ -3,7 +3,6 @@
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from digest_pipeline.llm_utils import build_response_format, build_user_prompt, llm_call
 

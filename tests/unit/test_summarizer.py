@@ -72,10 +72,12 @@ def test_summarize_non_object_json_returns_empty_dict(mock_completion, make_pape
 @patch("digest_pipeline.llm_utils.litellm.completion")
 def test_summarize_multiple_papers_schema(mock_completion, make_paper, make_settings):
     mock_choice = MagicMock()
-    mock_choice.message.content = json.dumps({
-        "paper_1": "Summary 1",
-        "paper_2": "Summary 2",
-    })
+    mock_choice.message.content = json.dumps(
+        {
+            "paper_1": "Summary 1",
+            "paper_2": "Summary 2",
+        }
+    )
     mock_completion.return_value = MagicMock(choices=[mock_choice])
 
     papers = [make_paper(), make_paper(title="Second Paper")]

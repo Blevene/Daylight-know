@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -87,9 +86,7 @@ class TestCollectArxivTopics:
     def test_manual_entry(self, monkeypatch):
         """Type codes manually then done."""
         inputs = iter(["t", "cs.AI, cs.LG", "d"])
-        monkeypatch.setattr(
-            "digest_pipeline.setup.console.input", lambda *a, **kw: next(inputs)
-        )
+        monkeypatch.setattr("digest_pipeline.setup.console.input", lambda *a, **kw: next(inputs))
         result = _collect_arxiv_topics()
         assert "cs.AI" in result
         assert "cs.LG" in result
@@ -97,9 +94,7 @@ class TestCollectArxivTopics:
     def test_rejects_invalid_and_continues(self, monkeypatch):
         """Invalid codes are rejected, valid ones kept."""
         inputs = iter(["t", "fake.XX, cs.AI", "d"])
-        monkeypatch.setattr(
-            "digest_pipeline.setup.console.input", lambda *a, **kw: next(inputs)
-        )
+        monkeypatch.setattr("digest_pipeline.setup.console.input", lambda *a, **kw: next(inputs))
         result = _collect_arxiv_topics()
         assert "cs.AI" in result
         assert "fake.XX" not in result
@@ -203,7 +198,7 @@ class TestEnvFile:
 
     def test_read_existing_strips_quotes(self, tmp_path):
         path = tmp_path / ".env"
-        path.write_text('FOO="bar"\nBAZ=\'qux\'\n')
+        path.write_text("FOO=\"bar\"\nBAZ='qux'\n")
 
         result = _read_existing_env(path)
         assert result == {"FOO": "bar", "BAZ": "qux"}
@@ -233,9 +228,7 @@ class TestHandleExistingEnv:
         path.write_text("OLD_KEY=old_value\n")
 
         # Choose "Overwrite"
-        monkeypatch.setattr(
-            "digest_pipeline.setup.console.input", lambda *a, **kw: "1"
-        )
+        monkeypatch.setattr("digest_pipeline.setup.console.input", lambda *a, **kw: "1")
         new_config = {"NEW_KEY": "new_value"}
         result = _handle_existing_env(path, new_config)
 
@@ -251,9 +244,7 @@ class TestHandleExistingEnv:
         path.write_text("EXISTING_KEY=keep_me\nARXIV_TOPICS=old\n")
 
         # Choose "Merge"
-        monkeypatch.setattr(
-            "digest_pipeline.setup.console.input", lambda *a, **kw: "2"
-        )
+        monkeypatch.setattr("digest_pipeline.setup.console.input", lambda *a, **kw: "2")
         new_config = {"ARXIV_TOPICS": "cs.AI", "LLM_MODEL": "test"}
         result = _handle_existing_env(path, new_config)
 
@@ -268,9 +259,7 @@ class TestHandleExistingEnv:
         # Create a pre-existing backup
         (tmp_path / ".env.bak.20260101T000000").write_text("KEY=v0\n")
 
-        monkeypatch.setattr(
-            "digest_pipeline.setup.console.input", lambda *a, **kw: "1"
-        )
+        monkeypatch.setattr("digest_pipeline.setup.console.input", lambda *a, **kw: "1")
         _handle_existing_env(path, {"KEY": "v2"})
 
         # Should now have 2 backups (old one preserved)

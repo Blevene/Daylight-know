@@ -38,9 +38,6 @@ def chunk_text(text: str) -> list[TextChunk]:
     )
     raw_chunks = chunker.chunk(text)
 
-    chunks = [
-        TextChunk(text=c.text, chunk_index=idx)
-        for idx, c in enumerate(raw_chunks)
-    ]
+    chunks = [TextChunk(text=c.text, chunk_index=idx) for idx, c in enumerate(raw_chunks)]
     logger.info("Produced %d semantic chunks.", len(chunks))
     return chunks

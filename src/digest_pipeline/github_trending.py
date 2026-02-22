@@ -47,7 +47,12 @@ def fetch_trending(settings: Settings) -> list[TrendingRepo]:
     try:
         resp = requests.get(
             GITHUB_SEARCH_URL,
-            params={"q": query, "sort": "stars", "order": "desc", "per_page": settings.github_top_n},
+            params={
+                "q": query,
+                "sort": "stars",
+                "order": "desc",
+                "per_page": settings.github_top_n,
+            },
             headers={"Accept": "application/vnd.github+json"},
             timeout=30,
         )
@@ -57,7 +62,7 @@ def fetch_trending(settings: Settings) -> list[TrendingRepo]:
         return []
 
     repos: list[TrendingRepo] = []
-    for item in resp.json().get("items", [])[:settings.github_top_n]:
+    for item in resp.json().get("items", [])[: settings.github_top_n]:
         repos.append(
             TrendingRepo(
                 name=item.get("full_name", ""),

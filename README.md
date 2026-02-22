@@ -72,7 +72,7 @@ Each digest email contains per-paper sections with:
 ### Installation
 
 ```bash
-git clone https://github.com/your-org/Daylight-know.git
+git clone https://github.com/Blevene/Daylight-know.git
 cd Daylight-know
 pip install -e ".[dev]"
 ```
@@ -372,6 +372,36 @@ sudo systemctl enable --now digest-pipeline.timer
 sudo systemctl status digest-pipeline.timer
 journalctl -u digest-pipeline.service  # view logs
 ```
+
+## Tech Stack
+
+### Core Libraries
+
+| Library | Version | Role |
+|---|---|---|
+| [litellm](https://github.com/BerriAI/litellm) | >=1.30 | Universal LLM gateway — routes to OpenAI, Anthropic, Google, Ollama, Azure, and 100+ other providers |
+| [ChromaDB](https://www.trychroma.com/) | >=0.5 | Local vector store with persistent SQLite + HNSW indexing for chunk storage and retrieval |
+| [PyMuPDF (fitz)](https://pymupdf.readthedocs.io/) | >=1.24 | PDF text extraction |
+| [Chonkie](https://github.com/chonkie-ai/chonkie) | >=1.0 | Semantic text chunking with the `potion-base-32M` embedding model |
+| [arxiv](https://github.com/lukasschwab/arxiv.py) | >=2.1 | arXiv API client for paper fetching |
+| [Pydantic](https://docs.pydantic.dev/) | >=2.0 | Data validation and schema definitions (Paper, TextChunk models) |
+| [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) | >=2.0 | Configuration management from environment variables and `.env` files |
+| [Jinja2](https://jinja.palletsprojects.com/) | >=3.1 | HTML and plaintext email templating |
+| [Mistune](https://mistune.lepture.com/) | >=3.0 | Markdown-to-HTML conversion for email rendering |
+| [Rich](https://rich.readthedocs.io/) | >=13.0 | Interactive setup wizard TUI (console, tables, panels, prompts) |
+| [Requests](https://requests.readthedocs.io/) | >=2.31 | HTTP client for HuggingFace, OpenAlex, and GitHub APIs |
+| [python-dotenv](https://github.com/theskumar/python-dotenv) | >=1.0 | `.env` file loading |
+
+### Dev & Testing
+
+| Library | Role |
+|---|---|
+| [pytest](https://pytest.org/) | Test runner with custom markers (`unit`, `integration`, `e2e`, `network`) |
+| [Ruff](https://docs.astral.sh/ruff/) | Linter and formatter (target: Python 3.10, line length: 100) |
+| [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/) | Stub LLM server for integration tests |
+| [aiosmtpd](https://aiosmtpd.readthedocs.io/) | Fake SMTP server for email integration tests |
+| [reportlab](https://www.reportlab.com/) | Test PDF fixture generation |
+| [Hatchling](https://hatch.pypa.io/) | Build backend |
 
 ## Project Structure
 

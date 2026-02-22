@@ -83,17 +83,27 @@ def _request_with_retry(url: str, **kwargs) -> requests.Response:
                 wait = int(retry_after) if retry_after and retry_after.isdigit() else 30
                 logger.warning(
                     "HF rate-limited (429), attempt %d/%d — waiting %ds…",
-                    attempt, max_attempts, wait,
+                    attempt,
+                    max_attempts,
+                    wait,
                 )
             else:
-                wait = 2 ** attempt
-                logger.warning("HF request attempt %d/%d failed (%s), retrying in %ds…", attempt, max_attempts, status, wait)
+                wait = 2**attempt
+                logger.warning(
+                    "HF request attempt %d/%d failed (%s), retrying in %ds…",
+                    attempt,
+                    max_attempts,
+                    status,
+                    wait,
+                )
             time.sleep(wait)
         except Exception:
             if attempt == max_attempts:
                 raise
-            wait = 2 ** attempt
-            logger.warning("HF request attempt %d/%d failed, retrying in %ds…", attempt, max_attempts, wait)
+            wait = 2**attempt
+            logger.warning(
+                "HF request attempt %d/%d failed, retrying in %ds…", attempt, max_attempts, wait
+            )
             time.sleep(wait)
     raise RuntimeError("unreachable")  # pragma: no cover
 

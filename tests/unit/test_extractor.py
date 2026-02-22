@@ -3,7 +3,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from digest_pipeline.extractor import ExtractionResult, extract_text
+from digest_pipeline.extractor import extract_text
 
 
 @patch("digest_pipeline.extractor.fitz.open")

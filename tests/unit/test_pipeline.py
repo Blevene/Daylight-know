@@ -1,9 +1,8 @@
 """Tests for the pipeline orchestrator."""
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from digest_pipeline.extractor import ExtractionResult
 from digest_pipeline.fetcher import Paper
@@ -86,7 +85,9 @@ def test_run_no_papers(mock_fetch, make_settings):
 
 @patch("digest_pipeline.pipeline.send_digest")
 @patch("digest_pipeline.pipeline.generate_critiques", return_value={"paper_1": "Critiques text"})
-@patch("digest_pipeline.pipeline.extract_implications", return_value={"paper_1": "Implications text"})
+@patch(
+    "digest_pipeline.pipeline.extract_implications", return_value={"paper_1": "Implications text"}
+)
 @patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "Summary"})
 @patch("digest_pipeline.pipeline.store_chunks", return_value=[])
 @patch("digest_pipeline.pipeline.chunk_text", return_value=[])
@@ -96,8 +97,14 @@ def test_run_no_papers(mock_fetch, make_settings):
 )
 @patch("digest_pipeline.pipeline.fetch_papers")
 def test_run_full_pipeline(
-    mock_fetch, mock_extract, mock_chunk, mock_store,
-    mock_summarize, mock_implications, mock_critiques, mock_email,
+    mock_fetch,
+    mock_extract,
+    mock_chunk,
+    mock_store,
+    mock_summarize,
+    mock_implications,
+    mock_critiques,
+    mock_email,
     make_settings,
 ):
     paper = _make_paper()
@@ -138,8 +145,14 @@ def test_run_full_pipeline(
 )
 @patch("digest_pipeline.pipeline.fetch_papers")
 def test_run_postprocessing_disabled(
-    mock_fetch, mock_extract, mock_chunk, mock_store,
-    mock_summarize, mock_implications, mock_critiques, mock_email,
+    mock_fetch,
+    mock_extract,
+    mock_chunk,
+    mock_store,
+    mock_summarize,
+    mock_implications,
+    mock_critiques,
+    mock_email,
     make_settings,
 ):
     paper = _make_paper()
@@ -182,11 +195,19 @@ def test_run_unparseable_paper(mock_fetch, mock_extract, mock_store_unparse, mak
 @patch("digest_pipeline.pipeline.fetch_openalex_papers")
 @patch("digest_pipeline.pipeline.fetch_papers", return_value=[])
 def test_pipeline_calls_ranker_for_openalex(
-    mock_fetch, mock_oa_fetch, mock_rank, mock_chunk, mock_store,
-    mock_summarize, mock_send, make_settings,
+    mock_fetch,
+    mock_oa_fetch,
+    mock_rank,
+    mock_chunk,
+    mock_store,
+    mock_summarize,
+    mock_send,
+    make_settings,
 ):
     """rank_papers is called on OpenAlex results before adding to pipeline."""
-    oa_paper = _make_paper(paper_id="oa_W1", source="openalex", pdf_path=None, abstract="Test abstract")
+    oa_paper = _make_paper(
+        paper_id="oa_W1", source="openalex", pdf_path=None, abstract="Test abstract"
+    )
     mock_oa_fetch.return_value = [oa_paper]
     mock_rank.return_value = [oa_paper]
 

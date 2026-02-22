@@ -7,7 +7,9 @@ from digest_pipeline.ranker import compute_keyword_scores, score_batch_with_llm,
 
 def test_keyword_scoring_basic(make_paper):
     papers = [
-        make_paper(title="LLM for Drug Discovery", abstract="We apply large language models to find drugs."),
+        make_paper(
+            title="LLM for Drug Discovery", abstract="We apply large language models to find drugs."
+        ),
         make_paper(title="Image Segmentation", abstract="A new method for segmenting images."),
     ]
     scores = compute_keyword_scores(papers, ["LLM", "drug discovery"])
@@ -78,7 +80,9 @@ def test_rank_papers_combines_scores(mock_llm_score, make_paper, make_settings):
     """Papers are ranked by combined keyword + LLM score."""
     papers = [
         make_paper(paper_id="low", title="Unrelated Topic", abstract="Nothing relevant here"),
-        make_paper(paper_id="high", title="LLM for Drug Discovery", abstract="We use LLM to find drugs"),
+        make_paper(
+            paper_id="high", title="LLM for Drug Discovery", abstract="We use LLM to find drugs"
+        ),
     ]
     # LLM gives both a 5, but keywords will differentiate
     mock_llm_score.return_value = [5, 5]
@@ -108,7 +112,7 @@ def test_rank_papers_batches_correctly(mock_llm_score, make_paper, make_settings
     papers = [make_paper(paper_id=f"p{i}") for i in range(25)]
     mock_llm_score.side_effect = [
         [5] * 20,  # first batch
-        [5] * 5,   # second batch
+        [5] * 5,  # second batch
     ]
     settings = make_settings(
         openalex_interest_profile="test",

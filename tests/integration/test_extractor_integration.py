@@ -4,7 +4,6 @@ Test IDs: E-1, E-2, E-3
 """
 
 import pytest
-from pathlib import Path
 
 from digest_pipeline.extractor import extract_text
 

@@ -84,9 +84,7 @@ def test_fetch_hf_daily_filters_old(mock_get, make_settings):
 @patch("digest_pipeline.hf_fetcher.requests.get")
 def test_fetch_hf_daily_respects_max_results(mock_get, make_settings):
     mock_resp = MagicMock()
-    mock_resp.json.return_value = [
-        _make_hf_entry(paper_id=f"p{i}", hours_ago=1) for i in range(10)
-    ]
+    mock_resp.json.return_value = [_make_hf_entry(paper_id=f"p{i}", hours_ago=1) for i in range(10)]
     mock_resp.raise_for_status = MagicMock()
     mock_get.return_value = mock_resp
 

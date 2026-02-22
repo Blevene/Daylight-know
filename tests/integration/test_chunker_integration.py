@@ -63,10 +63,18 @@ class TestChunkerIntegration:
         # Generate a ~12KB text with distinct paragraphs
         paragraphs = []
         topics = [
-            "neural networks", "gradient descent", "attention mechanisms",
-            "convolutional layers", "recurrent architectures", "transformer models",
-            "batch normalization", "dropout regularization", "transfer learning",
-            "few-shot learning", "meta-learning", "self-supervised pretraining",
+            "neural networks",
+            "gradient descent",
+            "attention mechanisms",
+            "convolutional layers",
+            "recurrent architectures",
+            "transformer models",
+            "batch normalization",
+            "dropout regularization",
+            "transfer learning",
+            "few-shot learning",
+            "meta-learning",
+            "self-supervised pretraining",
         ]
         for topic in topics:
             paragraphs.append(

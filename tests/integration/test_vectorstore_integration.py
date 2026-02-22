@@ -4,11 +4,9 @@ Test IDs: V-1, V-2, V-3, V-4, V-5, V-6
 """
 
 import pytest
-from datetime import datetime, timezone
 
 from digest_pipeline.chunker import TextChunk
 from digest_pipeline.config import Settings
-from digest_pipeline.fetcher import Paper
 from digest_pipeline.vectorstore import (
     StoredChunk,
     VectorStoreError,

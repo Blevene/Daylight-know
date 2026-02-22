@@ -104,18 +104,22 @@ def _cmd_validate(codes: list[str]) -> None:
     valid, invalid = validate_topics(codes)
 
     if valid:
-        console.print(Panel(
-            "\n".join(f"  [green]✓[/] {c}" for c in valid),
-            title="Valid Topics",
-            border_style="green",
-        ))
+        console.print(
+            Panel(
+                "\n".join(f"  [green]✓[/] {c}" for c in valid),
+                title="Valid Topics",
+                border_style="green",
+            )
+        )
 
     if invalid:
-        console.print(Panel(
-            "\n".join(f"  [red]✗[/] {c}" for c in invalid),
-            title="Invalid Topics",
-            border_style="red",
-        ))
+        console.print(
+            Panel(
+                "\n".join(f"  [red]✗[/] {c}" for c in invalid),
+                title="Invalid Topics",
+                border_style="red",
+            )
+        )
         sys.exit(1)
     else:
         console.print("[green]All topic codes are valid.[/]")

@@ -46,12 +46,14 @@ def test_build_email_with_implications_and_critiques(make_settings):
 
 def test_build_email_without_optional_sections(make_settings):
     settings = make_settings()
-    papers = [PaperAnalysis(
-        title="Test Paper",
-        url="https://arxiv.org/abs/2401.00001",
-        authors=["Alice"],
-        summary="Test summary",
-    )]
+    papers = [
+        PaperAnalysis(
+            title="Test Paper",
+            url="https://arxiv.org/abs/2401.00001",
+            authors=["Alice"],
+            summary="Test summary",
+        )
+    ]
     msg = _build_email(papers, "2025-01-15", settings)
     payloads = msg.get_payload()
     html_body = payloads[1].get_payload(decode=True).decode()

@@ -68,9 +68,7 @@ def score_batch_with_llm(papers: list[Paper], settings: Settings) -> list[int]:
     user_prompt = "\n---\n".join(parts)
 
     # Build response format expecting integer scores
-    properties = {
-        f"paper_{i}": {"type": "integer"} for i in range(1, len(papers) + 1)
-    }
+    properties = {f"paper_{i}": {"type": "integer"} for i in range(1, len(papers) + 1)}
     response_format = {
         "type": "json_schema",
         "json_schema": {
@@ -100,8 +98,7 @@ def score_batch_with_llm(papers: list[Paper], settings: Settings) -> list[int]:
         raw = response.choices[0].message.content or ""
         parsed = json.loads(raw)
         return [
-            max(0, min(10, int(parsed.get(f"paper_{i}", 0))))
-            for i in range(1, len(papers) + 1)
+            max(0, min(10, int(parsed.get(f"paper_{i}", 0)))) for i in range(1, len(papers) + 1)
         ]
     except Exception:
         logger.warning("LLM scoring failed — falling back to zero scores.", exc_info=True)

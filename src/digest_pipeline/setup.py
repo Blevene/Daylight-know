@@ -393,15 +393,12 @@ def _collect_optional_settings() -> dict[str, str]:
 
     if _prompt_bool("Enable OpenAlex integration?", default=False):
         config["OPENALEX_ENABLED"] = "true"
-        config["OPENALEX_API_KEY"] = _prompt(
-            "OpenAlex API key (optional, press Enter to skip)"
-        )
-        config["OPENALEX_EMAIL"] = _prompt(
-            "Email for OpenAlex polite pool (optional)"
-        )
+        config["OPENALEX_API_KEY"] = _prompt("OpenAlex API key (optional, press Enter to skip)")
+        config["OPENALEX_EMAIL"] = _prompt("Email for OpenAlex polite pool (optional)")
         config["OPENALEX_MAX_RESULTS"] = _prompt("OpenAlex max results", "20")
         config["OPENALEX_QUERY"] = _prompt("OpenAlex search query", "machine learning")
         import json as _json
+
         selected_fields = _collect_openalex_fields()
         if selected_fields:
             config["OPENALEX_FIELDS"] = _json.dumps(selected_fields)
@@ -410,9 +407,7 @@ def _collect_optional_settings() -> dict[str, str]:
             config["OPENALEX_INTEREST_PROFILE"] = _prompt(
                 "Describe your research interests (natural language)"
             )
-            keywords = _prompt(
-                "Boost keywords (comma-separated, optional)"
-            )
+            keywords = _prompt("Boost keywords (comma-separated, optional)")
             if keywords:
                 kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
                 config["OPENALEX_INTEREST_KEYWORDS"] = _json.dumps(kw_list)
@@ -624,14 +619,16 @@ def run_setup_wizard(env_path: str | None = None) -> None:
     """Run the interactive setup wizard."""
     path = Path(env_path) if env_path else Path(".env")
 
-    console.print(Panel(
-        "[bold]Welcome to the Digest Pipeline Setup Wizard![/]\n\n"
-        "This wizard will guide you through configuring your\n"
-        "research digest pipeline (arXiv, HuggingFace, OpenAlex).\n\n"
-        "[dim]Press Enter to accept default values shown in brackets.[/]",
-        title="🔬 Digest Pipeline Setup",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel(
+            "[bold]Welcome to the Digest Pipeline Setup Wizard![/]\n\n"
+            "This wizard will guide you through configuring your\n"
+            "research digest pipeline (arXiv, HuggingFace, OpenAlex).\n\n"
+            "[dim]Press Enter to accept default values shown in brackets.[/]",
+            title="🔬 Digest Pipeline Setup",
+            border_style="cyan",
+        )
+    )
 
     # Collect all settings
     config: dict[str, str] = {}

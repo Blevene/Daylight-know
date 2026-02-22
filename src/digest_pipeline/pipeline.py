@@ -71,18 +71,20 @@ def _build_analyses(
     analyses: list[PaperAnalysis] = []
     for i, paper in enumerate(papers, 1):
         key = f"paper_{i}"
-        analyses.append(PaperAnalysis(
-            title=paper.title,
-            url=paper.url,
-            source=paper.source,
-            authors=paper.authors,
-            categories=paper.categories,
-            upvotes=paper.upvotes,
-            fields_of_study=paper.fields_of_study,
-            summary=summaries.get(key, ""),
-            implications=implications.get(key, ""),
-            critique=critiques.get(key, ""),
-        ))
+        analyses.append(
+            PaperAnalysis(
+                title=paper.title,
+                url=paper.url,
+                source=paper.source,
+                authors=paper.authors,
+                categories=paper.categories,
+                upvotes=paper.upvotes,
+                fields_of_study=paper.fields_of_study,
+                summary=summaries.get(key, ""),
+                implications=implications.get(key, ""),
+                critique=critiques.get(key, ""),
+            )
+        )
     return analyses
 
 
@@ -234,7 +236,8 @@ def main() -> None:
     """CLI entry point with subcommands: run, setup, topics."""
     parser = argparse.ArgumentParser(description="Automated Research Digest Pipeline")
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable DEBUG-level logging",
     )
@@ -280,9 +283,11 @@ def main() -> None:
 
     if args.command == "setup":
         from digest_pipeline.setup import run_setup_wizard
+
         run_setup_wizard(args.env_file)
     elif args.command == "topics":
         from digest_pipeline.topics_cli import handle_topics_command
+
         handle_topics_command(args)
     else:
         # No subcommand or "run" — execute pipeline

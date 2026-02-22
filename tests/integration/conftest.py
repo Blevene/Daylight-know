@@ -44,6 +44,7 @@ def test_settings(tmp_path) -> Settings:
 @pytest.fixture
 def make_paper():
     """Factory fixture for creating Paper objects."""
+
     def _make_paper(**overrides) -> Paper:
         defaults = dict(
             paper_id="2401.00001",
@@ -56,4 +57,5 @@ def make_paper():
         )
         defaults.update(overrides)
         return Paper(**defaults)
+
     return _make_paper

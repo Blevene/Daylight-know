@@ -1,10 +1,9 @@
 """Tests for the arXiv fetcher module."""
 
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from digest_pipeline.fetcher import Paper, download_pdf, _within_last_24h, fetch_papers
+from digest_pipeline.fetcher import download_pdf, _within_last_24h
 
 
 def test_within_last_24h_recent():

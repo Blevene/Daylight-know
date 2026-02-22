@@ -39,7 +39,13 @@ def test_format_for_prompt_empty():
 
 def test_format_for_prompt():
     repos = [
-        TrendingRepo(name="user/repo", description="Desc", url="https://github.com/user/repo", stars=42, language="Python")
+        TrendingRepo(
+            name="user/repo",
+            description="Desc",
+            url="https://github.com/user/repo",
+            stars=42,
+            language="Python",
+        )
     ]
     result = format_for_prompt(repos)
     assert "user/repo" in result

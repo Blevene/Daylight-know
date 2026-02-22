@@ -26,9 +26,7 @@ def build_response_format(name: str, num_papers: int) -> dict[str, Any]:
     providers supporting structured output (OpenAI strict mode, etc.) can
     enforce the shape at the API level.
     """
-    properties = {
-        f"paper_{i}": {"type": "string"} for i in range(1, num_papers + 1)
-    }
+    properties = {f"paper_{i}": {"type": "string"} for i in range(1, num_papers + 1)}
     return {
         "type": "json_schema",
         "json_schema": {
@@ -107,20 +105,28 @@ def llm_call(
                 parsed = json.loads(raw)
             except json.JSONDecodeError:
                 logger.error(
-                    "LLM %s returned invalid JSON: %.200s", label, raw,
+                    "LLM %s returned invalid JSON: %.200s",
+                    label,
+                    raw,
                 )
                 return {}
             if not isinstance(parsed, dict):
                 logger.error(
-                    "LLM %s returned non-object JSON: %s", label, type(parsed),
+                    "LLM %s returned non-object JSON: %s",
+                    label,
+                    type(parsed),
                 )
                 return {}
             return {k: str(v) for k, v in parsed.items()}
         except litellm.RateLimitError as exc:
-            wait = 2 ** attempt
+            wait = 2**attempt
             logger.warning(
                 "Rate-limited during %s (attempt %d/%d). Retrying in %ds: %s",
-                label, attempt, max_backoff_attempts, wait, exc,
+                label,
+                attempt,
+                max_backoff_attempts,
+                wait,
+                exc,
             )
             if attempt == max_backoff_attempts:
                 raise

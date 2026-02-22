@@ -63,9 +63,11 @@ def download_pdf(url: str, dest: Path, max_retries: int = 3) -> bool:
             dest.write_bytes(resp.content)
             return True
         except Exception as exc:
-            logger.warning("PDF download attempt %d/%d failed for %s: %s", attempt, max_retries, url, exc)
+            logger.warning(
+                "PDF download attempt %d/%d failed for %s: %s", attempt, max_retries, url, exc
+            )
             if attempt < max_retries:
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
     return False
 
 
@@ -98,7 +100,11 @@ def fetch_papers(settings: Settings) -> list[Paper]:
         pdf_dest = tmp_dir / f"{paper_id}.pdf"
 
         if not download_pdf(pdf_url, pdf_dest, max_retries=settings.pdf_download_max_retries):
-            logger.error("Skipping paper %s — PDF download failed after %d attempts.", paper_id, settings.pdf_download_max_retries)
+            logger.error(
+                "Skipping paper %s — PDF download failed after %d attempts.",
+                paper_id,
+                settings.pdf_download_max_retries,
+            )
             continue
 
         papers.append(

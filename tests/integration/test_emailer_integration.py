@@ -100,35 +100,41 @@ class TestEmailerIntegration:
         )
 
         # Special characters in summary
-        papers = [PaperAnalysis(
-            title="Test Paper",
-            url="https://arxiv.org/abs/1",
-            authors=["Alice"],
-            summary='Summary with <html> & "quotes" and unicode: café résumé',
-        )]
+        papers = [
+            PaperAnalysis(
+                title="Test Paper",
+                url="https://arxiv.org/abs/1",
+                authors=["Alice"],
+                summary='Summary with <html> & "quotes" and unicode: café résumé',
+            )
+        ]
         msg = _build_email(papers, "2025-01-15", settings)
         payloads = msg.get_payload()
         plain_body = payloads[0].get_payload(decode=True).decode()
         assert "café" in plain_body
 
         # Empty implications and critiques (sections should be omitted)
-        papers2 = [PaperAnalysis(
-            title="Test Paper",
-            url="https://arxiv.org/abs/1",
-            authors=["Alice"],
-            summary="Summary",
-        )]
+        papers2 = [
+            PaperAnalysis(
+                title="Test Paper",
+                url="https://arxiv.org/abs/1",
+                authors=["Alice"],
+                summary="Summary",
+            )
+        ]
         msg2 = _build_email(papers2, "2025-01-15", settings)
         html_body = msg2.get_payload()[1].get_payload(decode=True).decode()
         assert "Practical Implications" not in html_body
 
         # Very long summary
-        papers3 = [PaperAnalysis(
-            title="Test Paper",
-            url="https://arxiv.org/abs/1",
-            authors=["Alice"],
-            summary="Word " * 5000,
-        )]
+        papers3 = [
+            PaperAnalysis(
+                title="Test Paper",
+                url="https://arxiv.org/abs/1",
+                authors=["Alice"],
+                summary="Word " * 5000,
+            )
+        ]
         msg3 = _build_email(papers3, "2025-01-15", settings)
         plain_body3 = msg3.get_payload()[0].get_payload(decode=True).decode()
         assert len(plain_body3) > 20000

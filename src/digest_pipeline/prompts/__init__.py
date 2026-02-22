@@ -12,8 +12,5 @@ def load_prompt(name: str) -> str:
     path = _DIR / f"{name}.md"
     if not path.exists():
         available = sorted(p.stem for p in _DIR.glob("*.md"))
-        raise FileNotFoundError(
-            f"Prompt file not found: {path}. "
-            f"Available prompts: {available}"
-        )
+        raise FileNotFoundError(f"Prompt file not found: {path}. Available prompts: {available}")
     return path.read_text().strip()

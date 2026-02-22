@@ -3,8 +3,6 @@
 Test IDs: CFG-1, CFG-2, CFG-3, CFG-4, CFG-5
 """
 
-import os
-
 import pytest
 
 from digest_pipeline.config import Settings

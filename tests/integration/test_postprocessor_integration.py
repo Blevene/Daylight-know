@@ -10,8 +10,6 @@ import pytest
 
 from digest_pipeline.config import Settings
 from digest_pipeline.postprocessor import (
-    CRITIQUES_SYSTEM_PROMPT,
-    IMPLICATIONS_SYSTEM_PROMPT,
     extract_implications,
     generate_critiques,
 )

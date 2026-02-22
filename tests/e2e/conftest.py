@@ -61,6 +61,7 @@ def e2e_settings(tmp_path, stub_llm) -> Settings:
 @pytest.fixture
 def make_paper():
     """Factory for creating Paper objects."""
+
     def _make(pdf_path: Path | None = None, **overrides) -> Paper:
         defaults = dict(
             paper_id="2401.00001",
@@ -73,4 +74,5 @@ def make_paper():
         )
         defaults.update(overrides)
         return Paper(**defaults)
+
     return _make

@@ -12,7 +12,6 @@ from digest_pipeline.topics_cli import (
     _cmd_list,
     _cmd_search,
     _cmd_validate,
-    console as cli_console,
 )
 
 

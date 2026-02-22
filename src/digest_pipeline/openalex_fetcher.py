@@ -153,21 +153,41 @@ def fetch_openalex_papers(
         except requests.exceptions.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else 0
             if attempt == max_attempts:
-                logger.exception("Failed to fetch papers from OpenAlex after %d attempts.", max_attempts)
+                logger.exception(
+                    "Failed to fetch papers from OpenAlex after %d attempts.", max_attempts
+                )
                 return []
             if status == 429:
                 wait = int(exc.response.headers.get("Retry-After", 5))
-                logger.warning("OpenAlex rate-limited (429), attempt %d/%d — waiting %ds.", attempt, max_attempts, wait)
+                logger.warning(
+                    "OpenAlex rate-limited (429), attempt %d/%d — waiting %ds.",
+                    attempt,
+                    max_attempts,
+                    wait,
+                )
             else:
-                wait = 2 ** attempt
-                logger.warning("OpenAlex request failed (%s), attempt %d/%d — retrying in %ds.", status, attempt, max_attempts, wait)
+                wait = 2**attempt
+                logger.warning(
+                    "OpenAlex request failed (%s), attempt %d/%d — retrying in %ds.",
+                    status,
+                    attempt,
+                    max_attempts,
+                    wait,
+                )
             time.sleep(wait)
         except Exception:
             if attempt == max_attempts:
-                logger.exception("Failed to fetch papers from OpenAlex after %d attempts.", max_attempts)
+                logger.exception(
+                    "Failed to fetch papers from OpenAlex after %d attempts.", max_attempts
+                )
                 return []
-            wait = 2 ** attempt
-            logger.warning("OpenAlex request failed, attempt %d/%d — retrying in %ds.", attempt, max_attempts, wait)
+            wait = 2**attempt
+            logger.warning(
+                "OpenAlex request failed, attempt %d/%d — retrying in %ds.",
+                attempt,
+                max_attempts,
+                wait,
+            )
             time.sleep(wait)
 
     results = data.get("results", [])
@@ -209,9 +229,7 @@ def fetch_openalex_papers(
         pub_date_str = item.get("publication_date")
         if pub_date_str:
             try:
-                published = datetime.strptime(pub_date_str, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
+                published = datetime.strptime(pub_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
             except ValueError:
                 published = datetime.now(timezone.utc)
         else:

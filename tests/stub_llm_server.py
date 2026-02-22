@@ -53,25 +53,29 @@ class StubLLMServer:
                 self._rate_limit_hits += 1
                 return JSONResponse(
                     status_code=429,
-                    content={"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}},
+                    content={
+                        "error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}
+                    },
                 )
 
             content = None if self.config.null_content else self.config.response_content
 
-            return JSONResponse(content={
-                "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": body.get("model", "test-model"),
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": content},
-                        "finish_reason": "stop",
-                    }
-                ],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
-            })
+            return JSONResponse(
+                content={
+                    "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": body.get("model", "test-model"),
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": content},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+                }
+            )
 
         return app
 
