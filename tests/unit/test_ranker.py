@@ -2,7 +2,7 @@
 
 from unittest.mock import patch, MagicMock
 
-from digest_pipeline.ranker import compute_keyword_scores, score_batch_with_llm
+from digest_pipeline.ranker import compute_keyword_scores, score_batch_with_llm, rank_papers
 
 
 def test_keyword_scoring_basic(make_paper):
@@ -71,3 +71,49 @@ def test_llm_batch_scoring_handles_invalid_json(mock_completion, make_paper, mak
     settings = make_settings(openalex_interest_profile="anything")
     scores = score_batch_with_llm(papers, settings)
     assert scores == [0]
+
+
+@patch("digest_pipeline.ranker.score_batch_with_llm")
+def test_rank_papers_combines_scores(mock_llm_score, make_paper, make_settings):
+    """Papers are ranked by combined keyword + LLM score."""
+    papers = [
+        make_paper(paper_id="low", title="Unrelated Topic", abstract="Nothing relevant here"),
+        make_paper(paper_id="high", title="LLM for Drug Discovery", abstract="We use LLM to find drugs"),
+    ]
+    # LLM gives both a 5, but keywords will differentiate
+    mock_llm_score.return_value = [5, 5]
+
+    settings = make_settings(
+        openalex_interest_profile="LLMs for drug discovery",
+        openalex_interest_keywords=["LLM", "drug"],
+        openalex_max_results=1,
+    )
+    ranked = rank_papers(papers, settings)
+    assert len(ranked) == 1
+    assert ranked[0].paper_id == "high"
+
+
+def test_rank_papers_no_profile_returns_unchanged(make_paper, make_settings):
+    """When no interest profile or keywords, return papers unchanged."""
+    papers = [make_paper(paper_id="a"), make_paper(paper_id="b")]
+    settings = make_settings(openalex_max_results=20)
+    ranked = rank_papers(papers, settings)
+    assert len(ranked) == 2
+    assert ranked[0].paper_id == "a"
+
+
+@patch("digest_pipeline.ranker.score_batch_with_llm")
+def test_rank_papers_batches_correctly(mock_llm_score, make_paper, make_settings):
+    """Papers are scored in batches of BATCH_SIZE."""
+    papers = [make_paper(paper_id=f"p{i}") for i in range(25)]
+    mock_llm_score.side_effect = [
+        [5] * 20,  # first batch
+        [5] * 5,   # second batch
+    ]
+    settings = make_settings(
+        openalex_interest_profile="test",
+        openalex_max_results=10,
+    )
+    ranked = rank_papers(papers, settings)
+    assert len(ranked) == 10
+    assert mock_llm_score.call_count == 2

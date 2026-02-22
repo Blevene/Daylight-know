@@ -106,3 +106,47 @@ def score_batch_with_llm(papers: list[Paper], settings: Settings) -> list[int]:
     except Exception:
         logger.warning("LLM scoring failed — falling back to zero scores.", exc_info=True)
         return [0] * len(papers)
+
+
+def rank_papers(papers: list[Paper], settings: Settings) -> list[Paper]:
+    """Rank papers by relevance and return the top N.
+
+    Combines keyword boost scores with LLM-based relevance scoring.
+    If no interest profile or keywords are configured, returns papers
+    unchanged (backward compatible).
+    """
+    if not settings.openalex_interest_profile and not settings.openalex_interest_keywords:
+        return papers
+
+    max_results = settings.openalex_max_results
+    if len(papers) <= max_results:
+        return papers
+
+    # 1. Keyword scores
+    keyword_scores = compute_keyword_scores(papers, settings.openalex_interest_keywords)
+
+    # 2. LLM scores (in batches)
+    llm_scores = [0] * len(papers)
+    if settings.openalex_interest_profile:
+        for start in range(0, len(papers), BATCH_SIZE):
+            batch = papers[start : start + BATCH_SIZE]
+            batch_scores = score_batch_with_llm(batch, settings)
+            for j, score in enumerate(batch_scores):
+                llm_scores[start + j] = score
+
+    # 3. Combine and sort
+    combined = [
+        (kw + llm, i, paper)
+        for i, (paper, kw, llm) in enumerate(zip(papers, keyword_scores, llm_scores))
+    ]
+    combined.sort(key=lambda x: (-x[0], x[1]))  # highest score first, stable order
+
+    ranked = [paper for _, _, paper in combined[:max_results]]
+    logger.info(
+        "Ranked %d papers -> top %d (score range: %d-%d).",
+        len(papers),
+        len(ranked),
+        combined[-1][0],
+        combined[0][0],
+    )
+    return ranked
