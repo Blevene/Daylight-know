@@ -100,7 +100,7 @@ def score_batch_with_llm(papers: list[Paper], settings: Settings) -> list[int]:
         raw = response.choices[0].message.content or ""
         parsed = json.loads(raw)
         return [
-            int(parsed.get(f"paper_{i}", 0))
+            max(0, min(10, int(parsed.get(f"paper_{i}", 0))))
             for i in range(1, len(papers) + 1)
         ]
     except Exception:

@@ -401,9 +401,9 @@ def _collect_optional_settings() -> dict[str, str]:
         )
         config["OPENALEX_MAX_RESULTS"] = _prompt("OpenAlex max results", "20")
         config["OPENALEX_QUERY"] = _prompt("OpenAlex search query", "machine learning")
+        import json as _json
         selected_fields = _collect_openalex_fields()
         if selected_fields:
-            import json as _json
             config["OPENALEX_FIELDS"] = _json.dumps(selected_fields)
         # Interest-based ranking
         if _prompt_bool("Enable interest-based paper ranking?", default=False):
@@ -414,7 +414,6 @@ def _collect_optional_settings() -> dict[str, str]:
                 "Boost keywords (comma-separated, optional)"
             )
             if keywords:
-                import json as _json
                 kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
                 config["OPENALEX_INTEREST_KEYWORDS"] = _json.dumps(kw_list)
             config["OPENALEX_FETCH_POOL"] = _prompt("Papers to fetch before ranking", "100")

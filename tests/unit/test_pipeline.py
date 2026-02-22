@@ -172,3 +172,31 @@ def test_run_unparseable_paper(mock_fetch, mock_extract, mock_store_unparse, mak
     run(make_settings())
 
     mock_store_unparse.assert_called_once()
+
+
+@patch("digest_pipeline.pipeline.send_digest")
+@patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "Summary"})
+@patch("digest_pipeline.pipeline.store_chunks")
+@patch("digest_pipeline.pipeline.chunk_text", return_value=[])
+@patch("digest_pipeline.pipeline.rank_papers")
+@patch("digest_pipeline.pipeline.fetch_openalex_papers")
+@patch("digest_pipeline.pipeline.fetch_papers", return_value=[])
+def test_pipeline_calls_ranker_for_openalex(
+    mock_fetch, mock_oa_fetch, mock_rank, mock_chunk, mock_store,
+    mock_summarize, mock_send, make_settings,
+):
+    """rank_papers is called on OpenAlex results before adding to pipeline."""
+    oa_paper = _make_paper(paper_id="oa_W1", source="openalex", pdf_path=None, abstract="Test abstract")
+    mock_oa_fetch.return_value = [oa_paper]
+    mock_rank.return_value = [oa_paper]
+
+    settings = make_settings(
+        openalex_enabled=True,
+        openalex_interest_profile="test",
+        postprocessing_implications=False,
+        postprocessing_critiques=False,
+    )
+    run(settings)
+
+    mock_rank.assert_called_once()
+    assert mock_rank.call_args[0][0] == [oa_paper]
