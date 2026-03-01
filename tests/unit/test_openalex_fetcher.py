@@ -369,6 +369,55 @@ def test_fetch_openalex_no_search_when_profile_set(mock_get, make_settings):
     assert "search" not in params
 
 
+@patch("digest_pipeline.openalex_fetcher.requests.get")
+def test_fetch_openalex_consolidates_by_doi(mock_get, make_settings):
+    """Papers sharing a DOI are consolidated, keeping the longer abstract."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "meta": {"count": 2},
+        "results": [
+            _make_openalex_work(
+                openalex_id="W1",
+                title="Paper A",
+                doi="10.1234/shared",
+                abstract_words={"Short": [0]},
+            ),
+            _make_openalex_work(
+                openalex_id="W2",
+                title="Paper A component",
+                doi="10.1234/shared",
+                abstract_words={"A": [0], "longer": [1], "abstract": [2], "here.": [3]},
+            ),
+        ],
+    }
+    mock_get.return_value = mock_resp
+
+    papers = fetch_openalex_papers(make_settings(openalex_enabled=True))
+
+    assert len(papers) == 1
+    assert "longer" in papers[0].abstract
+
+
+@patch("digest_pipeline.openalex_fetcher.requests.get")
+def test_fetch_openalex_consolidates_by_title(mock_get, make_settings):
+    """Papers with same title (no DOI) are consolidated."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "meta": {"count": 2},
+        "results": [
+            _make_openalex_work(openalex_id="W1", title="Same Title", doi=None),
+            _make_openalex_work(openalex_id="W2", title="Same Title", doi=None),
+        ],
+    }
+    mock_get.return_value = mock_resp
+
+    papers = fetch_openalex_papers(make_settings(openalex_enabled=True))
+
+    assert len(papers) == 1
+
+
 def test_openalex_fields_has_26_entries():
     """Verify all 26 OpenAlex fields are mapped."""
     assert len(OPENALEX_FIELDS) == 26

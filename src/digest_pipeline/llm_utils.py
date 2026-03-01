@@ -131,5 +131,15 @@ def llm_call(
             if attempt == max_backoff_attempts:
                 raise
             time.sleep(wait)
+        except Exception:
+            logger.exception(
+                "LLM %s failed on attempt %d/%d.",
+                label,
+                attempt,
+                max_backoff_attempts,
+            )
+            if attempt == max_backoff_attempts:
+                return {}
+            time.sleep(2**attempt)
 
     return {}  # unreachable, but satisfies type checkers

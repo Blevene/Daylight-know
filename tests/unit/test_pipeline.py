@@ -1,5 +1,6 @@
 """Tests for the pipeline orchestrator."""
 
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -83,6 +84,8 @@ def test_run_no_papers(mock_fetch, make_settings):
     mock_fetch.assert_called_once()
 
 
+@patch("digest_pipeline.pipeline.save_seen")
+@patch("digest_pipeline.pipeline.load_seen", return_value={})
 @patch("digest_pipeline.pipeline.send_digest")
 @patch("digest_pipeline.pipeline.generate_critiques", return_value={"paper_1": "Critiques text"})
 @patch(
@@ -105,6 +108,8 @@ def test_run_full_pipeline(
     mock_implications,
     mock_critiques,
     mock_email,
+    mock_load_seen,
+    mock_save_seen,
     make_settings,
 ):
     paper = _make_paper()
@@ -133,6 +138,8 @@ def test_run_full_pipeline(
     assert analyses[0].url == "https://arxiv.org/abs/2401.00001"
 
 
+@patch("digest_pipeline.pipeline.save_seen")
+@patch("digest_pipeline.pipeline.load_seen", return_value={})
 @patch("digest_pipeline.pipeline.send_digest")
 @patch("digest_pipeline.pipeline.generate_critiques")
 @patch("digest_pipeline.pipeline.extract_implications")
@@ -153,6 +160,8 @@ def test_run_postprocessing_disabled(
     mock_implications,
     mock_critiques,
     mock_email,
+    mock_load_seen,
+    mock_save_seen,
     make_settings,
 ):
     paper = _make_paper()
@@ -172,13 +181,38 @@ def test_run_postprocessing_disabled(
     assert analyses[0].critique == ""
 
 
+def test_build_analyses_warns_on_missing_keys(caplog):
+    """Warnings are logged when LLM result dicts are missing paper keys."""
+    papers = [
+        _make_paper(title="Paper 1", url="http://1", authors=["A"]),
+        _make_paper(title="Paper 2", url="http://2", authors=["B"]),
+    ]
+    summaries = {"paper_1": "Sum 1"}  # missing paper_2
+    implications = {"paper_1": "Impl 1", "paper_2": "Impl 2"}
+    critiques = {"paper_1": "Crit 1"}  # missing paper_2
+
+    with caplog.at_level(logging.WARNING, logger="digest_pipeline.pipeline"):
+        analyses = _build_analyses(papers, summaries, implications, critiques)
+
+    assert len(analyses) == 2
+    warnings = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("Missing summary" in w and "paper_2" in w for w in warnings)
+    assert any("Missing critique" in w and "paper_2" in w for w in warnings)
+    # paper_2 implications is present, so no warning for it
+    assert not any("Missing implications" in w and "paper_2" in w for w in warnings)
+
+
+@patch("digest_pipeline.pipeline.save_seen")
+@patch("digest_pipeline.pipeline.load_seen", return_value={})
 @patch("digest_pipeline.pipeline.store_unparseable")
 @patch(
     "digest_pipeline.pipeline.extract_text",
     return_value=ExtractionResult(paper_id="2401.00001", text="", parseable=False),
 )
 @patch("digest_pipeline.pipeline.fetch_papers")
-def test_run_unparseable_paper(mock_fetch, mock_extract, mock_store_unparse, make_settings):
+def test_run_unparseable_paper(
+    mock_fetch, mock_extract, mock_store_unparse, mock_load_seen, mock_save_seen, make_settings
+):
     paper = _make_paper()
     mock_fetch.return_value = [paper]
 
@@ -187,6 +221,8 @@ def test_run_unparseable_paper(mock_fetch, mock_extract, mock_store_unparse, mak
     mock_store_unparse.assert_called_once()
 
 
+@patch("digest_pipeline.pipeline.save_seen")
+@patch("digest_pipeline.pipeline.load_seen", return_value={})
 @patch("digest_pipeline.pipeline.send_digest")
 @patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "Summary"})
 @patch("digest_pipeline.pipeline.store_chunks")
@@ -202,6 +238,8 @@ def test_pipeline_calls_ranker_for_openalex(
     mock_store,
     mock_summarize,
     mock_send,
+    mock_load_seen,
+    mock_save_seen,
     make_settings,
 ):
     """rank_papers is called on OpenAlex results before adding to pipeline."""

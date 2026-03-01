@@ -39,6 +39,7 @@ from digest_pipeline.hf_fetcher import (
 from digest_pipeline.postprocessor import extract_implications, generate_critiques
 from digest_pipeline.openalex_fetcher import fetch_openalex_papers
 from digest_pipeline.ranker import rank_papers
+from digest_pipeline.seen_papers import filter_unseen, load_seen, record_papers, save_seen
 from digest_pipeline.summarizer import summarize
 from digest_pipeline.vectorstore import VectorStoreError, store_chunks, store_unparseable
 
@@ -71,6 +72,12 @@ def _build_analyses(
     analyses: list[PaperAnalysis] = []
     for i, paper in enumerate(papers, 1):
         key = f"paper_{i}"
+        if key not in summaries:
+            logger.warning("Missing summary for %s (%s).", key, paper.title)
+        if implications and key not in implications:
+            logger.warning("Missing implications for %s (%s).", key, paper.title)
+        if critiques and key not in critiques:
+            logger.warning("Missing critique for %s (%s).", key, paper.title)
         analyses.append(
             PaperAnalysis(
                 title=paper.title,
@@ -134,6 +141,10 @@ def run(settings: Settings | None = None) -> None:
         oa_papers = rank_papers(oa_papers, settings)
         logger.info("OpenAlex: %d papers after ranking.", len(oa_papers))
         papers.extend(oa_papers)
+
+    # ── Cross-day deduplication ──────────────────────────────────
+    seen = load_seen()
+    papers = filter_unseen(papers, seen)
 
     if not papers:
         logger.warning("No papers found from any source. Exiting.")
@@ -203,6 +214,10 @@ def run(settings: Settings | None = None) -> None:
         settings,
         hf_trending=hf_trending,
     )
+
+    # ── Record digested papers for cross-day dedup ────────────
+    record_papers(processed_papers, seen, date_str)
+    save_seen(seen, max_age_days=settings.dedup_history_days)
 
     logger.info("Pipeline run complete. %d paper(s) in digest.", len(processed_papers))
 

@@ -262,5 +262,31 @@ def fetch_openalex_papers(
             )
         )
 
-    logger.info("Fetched %d papers from OpenAlex.", len(papers))
-    return papers
+    # ── Consolidate duplicates by DOI ─────────────────────────
+    seen_dois: dict[str, int] = {}  # doi -> index in deduped list
+    seen_titles: dict[str, int] = {}  # normalized title -> index
+    deduped: list[Paper] = []
+    for paper in papers:
+        doi = (paper.url or "").removeprefix("https://doi.org/")
+        norm_title = paper.title.strip().lower()
+
+        if doi and doi in seen_dois:
+            existing_idx = seen_dois[doi]
+            if len(paper.abstract) > len(deduped[existing_idx].abstract):
+                deduped[existing_idx] = paper
+            logger.debug("Consolidated duplicate DOI %s", doi)
+        elif norm_title and norm_title in seen_titles:
+            existing_idx = seen_titles[norm_title]
+            if len(paper.abstract) > len(deduped[existing_idx].abstract):
+                deduped[existing_idx] = paper
+            logger.debug("Consolidated duplicate title %r", paper.title)
+        else:
+            idx = len(deduped)
+            if doi:
+                seen_dois[doi] = idx
+            if norm_title:
+                seen_titles[norm_title] = idx
+            deduped.append(paper)
+
+    logger.info("Fetched %d papers from OpenAlex (%d after dedup).", len(papers), len(deduped))
+    return deduped

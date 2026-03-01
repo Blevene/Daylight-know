@@ -149,7 +149,7 @@ The `LLM_MODEL` uses litellm's provider/model format. Examples:
 
 - `openai/gpt-4o-mini` — OpenAI
 - `anthropic/claude-sonnet-4-20250514` — Anthropic
-- `gemini/gemini-2.0-flash` — Google
+- `gemini/gemini-pro-latest` — Google (latest Pro model)
 - `ollama/llama3` — Local Ollama
 - `azure/gpt-4o` — Azure OpenAI
 

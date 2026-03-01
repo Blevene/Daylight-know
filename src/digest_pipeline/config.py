@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     postprocessing_implications: bool = Field(default=True)
     postprocessing_critiques: bool = Field(default=True)
 
+    # ── Cross-day deduplication ────────────────────────────────
+    dedup_history_days: int = Field(default=30)
+
     # ── PDF download retry ──────────────────────────────────────
     pdf_download_max_retries: int = Field(default=3)
 
