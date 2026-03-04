@@ -78,10 +78,11 @@ def llm_call(
 
     Returns a dict mapping ``paper_N`` keys to analysis strings.
     Enforces ``settings.llm_max_tokens`` and retries with exponential
-    backoff on rate-limit errors.
+    backoff on rate-limit errors and malformed responses.
     """
     user_prompt = build_user_prompt(papers, github_section)
     response_format = build_response_format(schema_name, len(papers))
+    expected_keys = {f"paper_{i}" for i in range(1, len(papers) + 1)}
 
     max_backoff_attempts = 5
     for attempt in range(1, max_backoff_attempts + 1):
@@ -100,24 +101,48 @@ def llm_call(
             raw = response.choices[0].message.content or ""
             logger.info("LLM %s complete (%d chars).", label, len(raw))
             if not raw:
+                logger.warning("LLM %s returned empty content (attempt %d/%d).", label, attempt, max_backoff_attempts)
+                if attempt < max_backoff_attempts:
+                    time.sleep(2**attempt)
+                    continue
                 return {}
             try:
                 parsed = json.loads(raw)
             except json.JSONDecodeError:
-                logger.error(
-                    "LLM %s returned invalid JSON: %.200s",
+                logger.warning(
+                    "LLM %s returned invalid JSON (attempt %d/%d): %.200s",
                     label,
+                    attempt,
+                    max_backoff_attempts,
                     raw,
                 )
+                if attempt < max_backoff_attempts:
+                    time.sleep(2**attempt)
+                    continue
                 return {}
             if not isinstance(parsed, dict):
-                logger.error(
-                    "LLM %s returned non-object JSON: %s",
+                logger.warning(
+                    "LLM %s returned non-object JSON (attempt %d/%d): %s",
                     label,
+                    attempt,
+                    max_backoff_attempts,
                     type(parsed),
                 )
+                if attempt < max_backoff_attempts:
+                    time.sleep(2**attempt)
+                    continue
                 return {}
-            return {k: str(v) for k, v in parsed.items()}
+            result = {k: str(v) for k, v in parsed.items()}
+            missing = expected_keys - result.keys()
+            if missing:
+                logger.warning(
+                    "LLM %s missing keys %s (attempt %d/%d).",
+                    label,
+                    sorted(missing),
+                    attempt,
+                    max_backoff_attempts,
+                )
+            return result
         except litellm.RateLimitError as exc:
             wait = 2**attempt
             logger.warning(
@@ -129,7 +154,8 @@ def llm_call(
                 exc,
             )
             if attempt == max_backoff_attempts:
-                raise
+                logger.error("LLM %s rate-limited after %d attempts; skipping.", label, max_backoff_attempts)
+                return {}
             time.sleep(wait)
         except Exception:
             logger.exception(

@@ -224,6 +224,50 @@ def test_run_unparseable_paper(
 @patch("digest_pipeline.pipeline.save_seen")
 @patch("digest_pipeline.pipeline.load_seen", return_value={})
 @patch("digest_pipeline.pipeline.send_digest")
+@patch("digest_pipeline.pipeline.generate_critiques", return_value={})
+@patch(
+    "digest_pipeline.pipeline.extract_implications", return_value={"paper_1": "Implications text"}
+)
+@patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "Summary"})
+@patch("digest_pipeline.pipeline.store_chunks", return_value=[])
+@patch("digest_pipeline.pipeline.chunk_text", return_value=[])
+@patch(
+    "digest_pipeline.pipeline.extract_text",
+    return_value=ExtractionResult(paper_id="2401.00001", text="content", parseable=True),
+)
+@patch("digest_pipeline.pipeline.fetch_papers")
+def test_run_logs_error_when_critiques_empty(
+    mock_fetch,
+    mock_extract,
+    mock_chunk,
+    mock_store,
+    mock_summarize,
+    mock_implications,
+    mock_critiques,
+    mock_email,
+    mock_load_seen,
+    mock_save_seen,
+    caplog,
+    make_settings,
+):
+    """Pipeline logs error when critique generation returns empty and still sends digest."""
+    paper = _make_paper()
+    mock_fetch.return_value = [paper]
+    settings = make_settings()
+
+    with caplog.at_level(logging.ERROR, logger="digest_pipeline.pipeline"):
+        run(settings)
+
+    assert any(
+        "Critique generation returned no results" in r.message and r.levelno == logging.ERROR
+        for r in caplog.records
+    )
+    mock_email.assert_called_once()
+
+
+@patch("digest_pipeline.pipeline.save_seen")
+@patch("digest_pipeline.pipeline.load_seen", return_value={})
+@patch("digest_pipeline.pipeline.send_digest")
 @patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "Summary"})
 @patch("digest_pipeline.pipeline.store_chunks")
 @patch("digest_pipeline.pipeline.chunk_text", return_value=[])

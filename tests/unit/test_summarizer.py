@@ -39,8 +39,9 @@ def test_summarize_with_github_section(mock_completion, make_paper, make_setting
     assert "Trending GitHub Repositories" in user_msg
 
 
+@patch("digest_pipeline.llm_utils.time.sleep")
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_summarize_empty_content_returns_empty_dict(mock_completion, make_paper, make_settings):
+def test_summarize_empty_content_returns_empty_dict(mock_completion, _mock_sleep, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = None
     mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -49,8 +50,9 @@ def test_summarize_empty_content_returns_empty_dict(mock_completion, make_paper,
     assert result == {}
 
 
+@patch("digest_pipeline.llm_utils.time.sleep")
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_summarize_malformed_json_returns_empty_dict(mock_completion, make_paper, make_settings):
+def test_summarize_malformed_json_returns_empty_dict(mock_completion, _mock_sleep, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = "This is not valid JSON at all"
     mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -59,8 +61,9 @@ def test_summarize_malformed_json_returns_empty_dict(mock_completion, make_paper
     assert result == {}
 
 
+@patch("digest_pipeline.llm_utils.time.sleep")
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_summarize_non_object_json_returns_empty_dict(mock_completion, make_paper, make_settings):
+def test_summarize_non_object_json_returns_empty_dict(mock_completion, _mock_sleep, make_paper, make_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = '["an", "array"]'
     mock_completion.return_value = MagicMock(choices=[mock_choice])

@@ -1,10 +1,16 @@
 """Tests for the shared LLM call utilities."""
 
 import json
-from unittest.mock import MagicMock, patch
+import logging
+from unittest.mock import MagicMock, call, patch
 
+import litellm
+import pytest
 
 from digest_pipeline.llm_utils import build_response_format, build_user_prompt, llm_call
+
+_MAX_ATTEMPTS = 5  # must match llm_utils.max_backoff_attempts
+_EXPECTED_SLEEPS = [call(2**i) for i in range(1, _MAX_ATTEMPTS)]  # [call(2), call(4), call(8), call(16)]
 
 
 class TestBuildResponseFormat:
@@ -83,8 +89,9 @@ class TestLlmCall:
         result = llm_call([make_paper()], "system prompt", make_settings(), "test")
         assert result == {"paper_1": "Result."}
 
+    @patch("digest_pipeline.llm_utils.time.sleep")
     @patch("digest_pipeline.llm_utils.litellm.completion")
-    def test_empty_content_returns_empty(self, mock_completion, make_paper, make_settings):
+    def test_empty_content_returns_empty(self, mock_completion, mock_sleep, make_paper, make_settings):
         mock_choice = MagicMock()
         mock_choice.message.content = None
         mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -92,8 +99,9 @@ class TestLlmCall:
         result = llm_call([make_paper()], "prompt", make_settings(), "test")
         assert result == {}
 
+    @patch("digest_pipeline.llm_utils.time.sleep")
     @patch("digest_pipeline.llm_utils.litellm.completion")
-    def test_malformed_json_returns_empty(self, mock_completion, make_paper, make_settings):
+    def test_malformed_json_returns_empty(self, mock_completion, mock_sleep, make_paper, make_settings):
         mock_choice = MagicMock()
         mock_choice.message.content = "not json"
         mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -101,8 +109,9 @@ class TestLlmCall:
         result = llm_call([make_paper()], "prompt", make_settings(), "test")
         assert result == {}
 
+    @patch("digest_pipeline.llm_utils.time.sleep")
     @patch("digest_pipeline.llm_utils.litellm.completion")
-    def test_non_object_json_returns_empty(self, mock_completion, make_paper, make_settings):
+    def test_non_object_json_returns_empty(self, mock_completion, mock_sleep, make_paper, make_settings):
         mock_choice = MagicMock()
         mock_choice.message.content = '["array"]'
         mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -118,3 +127,78 @@ class TestLlmCall:
 
         result = llm_call([make_paper()], "prompt", make_settings(), "test")
         assert result == {"paper_1": "42"}
+
+    # ── Retry behaviour tests ──────────────────────────────────────
+
+    @pytest.mark.parametrize("bad_content", [
+        None,          # empty content
+        "not json",    # invalid JSON
+        '["array"]',   # non-dict JSON
+    ], ids=["empty_content", "invalid_json", "non_dict_json"])
+    @patch("digest_pipeline.llm_utils.time.sleep")
+    @patch("digest_pipeline.llm_utils.litellm.completion")
+    def test_bad_content_retries_until_exhausted(self, mock_completion, mock_sleep, bad_content, make_paper, make_settings):
+        mock_choice = MagicMock()
+        mock_choice.message.content = bad_content
+        mock_completion.return_value = MagicMock(choices=[mock_choice])
+
+        result = llm_call([make_paper()], "prompt", make_settings(), "test")
+        assert result == {}
+        assert mock_completion.call_count == _MAX_ATTEMPTS
+        assert mock_sleep.call_count == _MAX_ATTEMPTS - 1
+        assert mock_sleep.call_args_list == _EXPECTED_SLEEPS
+
+    @patch("digest_pipeline.llm_utils.time.sleep")
+    @patch("digest_pipeline.llm_utils.litellm.completion")
+    def test_rate_limit_returns_empty_after_exhausting_retries(self, mock_completion, mock_sleep, make_paper, make_settings):
+        mock_completion.side_effect = litellm.RateLimitError(
+            message="rate limited", model="test", llm_provider="test"
+        )
+
+        result = llm_call([make_paper()], "prompt", make_settings(), "test")
+        assert result == {}
+        assert mock_completion.call_count == _MAX_ATTEMPTS
+        assert mock_sleep.call_count == _MAX_ATTEMPTS - 1
+        assert mock_sleep.call_args_list == _EXPECTED_SLEEPS
+
+    @patch("digest_pipeline.llm_utils.time.sleep")
+    @patch("digest_pipeline.llm_utils.litellm.completion")
+    def test_generic_exception_returns_empty_after_exhausting_retries(self, mock_completion, mock_sleep, make_paper, make_settings):
+        mock_completion.side_effect = RuntimeError("something broke")
+
+        result = llm_call([make_paper()], "prompt", make_settings(), "test")
+        assert result == {}
+        assert mock_completion.call_count == _MAX_ATTEMPTS
+        assert mock_sleep.call_count == _MAX_ATTEMPTS - 1
+        assert mock_sleep.call_args_list == _EXPECTED_SLEEPS
+
+    @patch("digest_pipeline.llm_utils.time.sleep")
+    @patch("digest_pipeline.llm_utils.litellm.completion")
+    def test_missing_keys_warns_and_returns_partial(self, mock_completion, mock_sleep, caplog, make_paper, make_settings):
+        papers = [make_paper(title="Paper 1"), make_paper(title="Paper 2")]
+        mock_choice = MagicMock()
+        mock_choice.message.content = json.dumps({"paper_1": "Result 1"})
+        mock_completion.return_value = MagicMock(choices=[mock_choice])
+
+        with caplog.at_level(logging.WARNING, logger="digest_pipeline.llm_utils"):
+            result = llm_call(papers, "prompt", make_settings(), "test")
+
+        assert result == {"paper_1": "Result 1"}
+        assert mock_completion.call_count == 1  # no retry for partial results
+        assert any("paper_2" in r.message for r in caplog.records if r.levelno == logging.WARNING)
+
+    @patch("digest_pipeline.llm_utils.time.sleep")
+    @patch("digest_pipeline.llm_utils.litellm.completion")
+    def test_recovers_on_retry_after_empty_content(self, mock_completion, mock_sleep, make_paper, make_settings):
+        empty_choice = MagicMock()
+        empty_choice.message.content = None
+        valid_choice = MagicMock()
+        valid_choice.message.content = json.dumps({"paper_1": "Got it."})
+        mock_completion.side_effect = [
+            MagicMock(choices=[empty_choice]),
+            MagicMock(choices=[valid_choice]),
+        ]
+
+        result = llm_call([make_paper()], "prompt", make_settings(), "test")
+        assert result == {"paper_1": "Got it."}
+        assert mock_completion.call_count == 2

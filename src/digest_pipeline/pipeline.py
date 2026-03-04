@@ -204,6 +204,8 @@ def run(settings: Settings | None = None) -> None:
     critiques: dict[str, str] = {}
     if settings.postprocessing_critiques:
         critiques = generate_critiques(processed_papers, settings)
+        if not critiques:
+            logger.error("Critique generation returned no results for %d papers.", len(processed_papers))
 
     # ── Step 8: Assemble & send ─────────────────────────────────
     analyses = _build_analyses(processed_papers, summaries, implications, critiques)
