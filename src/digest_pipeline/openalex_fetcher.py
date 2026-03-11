@@ -117,7 +117,10 @@ def fetch_openalex_papers(
             filters.append("primary_topic.field.id:" + "|".join(field_ids))
 
     # Use fetch_pool size when ranking is configured, otherwise max_results
-    has_ranking = bool(settings.openalex_interest_profile or settings.openalex_interest_keywords)
+    has_ranking = bool(
+        settings.openalex_interest_profile or settings.openalex_interest_keywords
+        or settings.interest_profile or settings.interest_keywords
+    )
     pool_size = settings.openalex_fetch_pool if has_ranking else settings.openalex_max_results
 
     params: dict[str, str | int] = {
