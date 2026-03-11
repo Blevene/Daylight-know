@@ -1,8 +1,8 @@
 """Interest-based paper ranking with keyword boosting and LLM scoring.
 
 Scores papers against a user-defined interest profile to select the most
-relevant papers from a larger fetch pool. Used between OpenAlex fetching
-and the main digest pipeline.
+relevant papers from a larger fetch pool. Used between fetching and the
+main digest pipeline for any source (arXiv, OpenAlex, etc.).
 """
 
 from __future__ import annotations
@@ -47,7 +47,12 @@ def compute_keyword_scores(papers: list[Paper], keywords: list[str]) -> list[int
     return scores
 
 
-def score_batch_with_llm(papers: list[Paper], settings: Settings) -> list[int]:
+def score_batch_with_llm(
+    papers: list[Paper],
+    settings: Settings,
+    *,
+    interest_profile: str = "",
+) -> list[int]:
     """Score a batch of papers using the LLM.
 
     Sends paper titles and abstracts to the configured LLM with the
@@ -57,8 +62,9 @@ def score_batch_with_llm(papers: list[Paper], settings: Settings) -> list[int]:
     if not papers:
         return []
 
+    profile = interest_profile or settings.interest_profile or settings.openalex_interest_profile
     system_prompt = load_prompt("ranker").replace(
-        "{interest_profile}", settings.openalex_interest_profile
+        "{interest_profile}", profile
     )
 
     # Build user message with paper titles and abstracts
@@ -105,29 +111,39 @@ def score_batch_with_llm(papers: list[Paper], settings: Settings) -> list[int]:
         return [0] * len(papers)
 
 
-def rank_papers(papers: list[Paper], settings: Settings) -> list[Paper]:
+def rank_papers(
+    papers: list[Paper],
+    settings: Settings,
+    *,
+    interest_profile: str = "",
+    interest_keywords: list[str] | None = None,
+    max_results: int = 20,
+) -> list[Paper]:
     """Rank papers by relevance and return the top N.
 
     Combines keyword boost scores with LLM-based relevance scoring.
-    If no interest profile or keywords are configured, returns papers
-    unchanged (backward compatible).
+    Uses explicit parameters if provided, otherwise falls back to
+    pipeline-wide settings. If no interest profile or keywords are
+    configured, returns papers unchanged.
     """
-    if not settings.openalex_interest_profile and not settings.openalex_interest_keywords:
+    profile = interest_profile or settings.interest_profile
+    keywords = interest_keywords if interest_keywords is not None else settings.interest_keywords
+
+    if not profile and not keywords:
         return papers
 
-    max_results = settings.openalex_max_results
     if len(papers) <= max_results:
         return papers
 
     # 1. Keyword scores
-    keyword_scores = compute_keyword_scores(papers, settings.openalex_interest_keywords)
+    keyword_scores = compute_keyword_scores(papers, keywords)
 
     # 2. LLM scores (in batches)
     llm_scores = [0] * len(papers)
-    if settings.openalex_interest_profile:
+    if profile:
         for start in range(0, len(papers), BATCH_SIZE):
             batch = papers[start : start + BATCH_SIZE]
-            batch_scores = score_batch_with_llm(batch, settings)
+            batch_scores = score_batch_with_llm(batch, settings, interest_profile=profile)
             for j, score in enumerate(batch_scores):
                 llm_scores[start + j] = score
 
