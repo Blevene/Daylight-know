@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # ── LLM (via litellm — supports any provider) ─────────────
     llm_api_key: str = Field(default="")
     llm_model: str = Field(default="openai/gpt-4o-mini")
-    llm_max_tokens: int = Field(default=4096)
+    llm_max_tokens: int = Field(default=16384)
     llm_api_base: str | None = Field(default=None)
 
     # ── ChromaDB ────────────────────────────────────────────────

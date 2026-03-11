@@ -18,6 +18,8 @@ from digest_pipeline.fetcher import Paper
 
 logger = logging.getLogger(__name__)
 
+LLM_BATCH_SIZE = 7  # max papers per LLM call to avoid output truncation
+
 
 def build_response_format(name: str, num_papers: int) -> dict[str, Any]:
     """Build a ``response_format`` dict with explicit ``paper_N`` keys.
@@ -66,7 +68,7 @@ def build_user_prompt(papers: list[Paper], github_section: str = "") -> str:
     return prompt
 
 
-def llm_call(
+def _llm_call_single(
     papers: list[Paper],
     system_prompt: str,
     settings: Settings,
@@ -74,7 +76,7 @@ def llm_call(
     schema_name: str = "paper_analysis",
     github_section: str = "",
 ) -> dict[str, str]:
-    """Perform an LLM completion with structured output, token limit, and backoff.
+    """Perform a single LLM completion for one batch of papers.
 
     Returns a dict mapping ``paper_N`` keys to analysis strings.
     Enforces ``settings.llm_max_tokens`` and retries with exponential
@@ -169,3 +171,38 @@ def llm_call(
             time.sleep(2**attempt)
 
     return {}  # unreachable, but satisfies type checkers
+
+
+def llm_call(
+    papers: list[Paper],
+    system_prompt: str,
+    settings: Settings,
+    label: str,
+    schema_name: str = "paper_analysis",
+    github_section: str = "",
+) -> dict[str, str]:
+    """Perform LLM completion with automatic batching, structured output, and retry.
+
+    Splits papers into batches of ``LLM_BATCH_SIZE`` to avoid output
+    truncation, calls the LLM for each batch, and merges results with
+    globally consistent ``paper_N`` keys.
+    """
+    if len(papers) <= LLM_BATCH_SIZE:
+        return _llm_call_single(papers, system_prompt, settings, label, schema_name, github_section)
+
+    merged: dict[str, str] = {}
+    for batch_start in range(0, len(papers), LLM_BATCH_SIZE):
+        batch = papers[batch_start : batch_start + LLM_BATCH_SIZE]
+        batch_num = batch_start // LLM_BATCH_SIZE + 1
+        batch_label = f"{label} batch {batch_num}"
+        # Only first batch gets github_section to avoid duplication
+        gh = github_section if batch_start == 0 else ""
+        batch_result = _llm_call_single(batch, system_prompt, settings, batch_label, schema_name, gh)
+        # Re-key from batch-local paper_N to global paper_N
+        for local_key, value in batch_result.items():
+            # local_key is "paper_1", "paper_2", etc. within the batch
+            local_idx = int(local_key.split("_")[1])
+            global_idx = batch_start + local_idx
+            merged[f"paper_{global_idx}"] = value
+
+    return merged

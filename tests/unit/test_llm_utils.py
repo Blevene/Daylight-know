@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, call, patch
 import litellm
 import pytest
 
-from digest_pipeline.llm_utils import build_response_format, build_user_prompt, llm_call
+from digest_pipeline.llm_utils import LLM_BATCH_SIZE, build_response_format, build_user_prompt, llm_call
 
 _MAX_ATTEMPTS = 5  # must match llm_utils.max_backoff_attempts
 _EXPECTED_SLEEPS = [call(2**i) for i in range(1, _MAX_ATTEMPTS)]  # [call(2), call(4), call(8), call(16)]
@@ -202,3 +202,79 @@ class TestLlmCall:
         result = llm_call([make_paper()], "prompt", make_settings(), "test")
         assert result == {"paper_1": "Got it."}
         assert mock_completion.call_count == 2
+
+
+class TestLlmCallBatching:
+    """Tests for automatic batching when paper count exceeds LLM_BATCH_SIZE."""
+
+    @patch("digest_pipeline.llm_utils.litellm.completion")
+    def test_small_batch_no_splitting(self, mock_completion, make_paper, make_settings):
+        """Papers <= LLM_BATCH_SIZE should result in a single LLM call."""
+        papers = [make_paper(title=f"Paper {i}") for i in range(1, LLM_BATCH_SIZE + 1)]
+        response_data = {f"paper_{i}": f"Summary {i}" for i in range(1, len(papers) + 1)}
+        mock_choice = MagicMock()
+        mock_choice.message.content = json.dumps(response_data)
+        mock_completion.return_value = MagicMock(choices=[mock_choice])
+
+        result = llm_call(papers, "system prompt", make_settings(), "test")
+        assert mock_completion.call_count == 1
+        assert result == response_data
+
+    @patch("digest_pipeline.llm_utils.litellm.completion")
+    def test_large_batch_splits_and_merges(self, mock_completion, make_paper, make_settings):
+        """Papers > LLM_BATCH_SIZE should be split into multiple calls and merged."""
+        num_papers = LLM_BATCH_SIZE + 3
+        papers = [make_paper(title=f"Paper {i}") for i in range(1, num_papers + 1)]
+
+        def fake_completion(**kwargs):
+            """Return correctly-keyed JSON for whatever batch was sent."""
+            user_msg = kwargs["messages"][1]["content"]
+            # Count papers in the user prompt
+            count = user_msg.count("### Paper ")
+            resp = {f"paper_{i}": f"Summary {i}" for i in range(1, count + 1)}
+            mock_choice = MagicMock()
+            mock_choice.message.content = json.dumps(resp)
+            return MagicMock(choices=[mock_choice])
+
+        mock_completion.side_effect = fake_completion
+
+        result = llm_call(papers, "system prompt", make_settings(), "test")
+        # Should have called LLM twice (one full batch + one remainder)
+        assert mock_completion.call_count == 2
+        # Final result should have all papers with globally re-keyed indices
+        assert len(result) == num_papers
+        for i in range(1, num_papers + 1):
+            assert f"paper_{i}" in result
+
+    @patch("digest_pipeline.llm_utils.time.sleep")
+    @patch("digest_pipeline.llm_utils.litellm.completion")
+    def test_one_batch_fails_others_succeed(self, mock_completion, mock_sleep, make_paper, make_settings):
+        """If one batch fails all retries, other batches' results still appear."""
+        num_papers = LLM_BATCH_SIZE + 3
+        # Use unique titles so we can tell batches apart
+        papers = [make_paper(title=f"ALPHA_{i}") for i in range(1, LLM_BATCH_SIZE + 1)]
+        papers += [make_paper(title=f"BETA_{i}") for i in range(1, 4)]
+
+        def fake_completion(**kwargs):
+            user_msg = kwargs["messages"][1]["content"]
+            paper_count = user_msg.count("### Paper ")
+            # First batch (contains ALPHA titles) always fails
+            if "ALPHA_" in user_msg:
+                mock_choice = MagicMock()
+                mock_choice.message.content = "not json"
+                return MagicMock(choices=[mock_choice])
+            # Second batch (contains BETA titles) succeeds
+            resp = {f"paper_{i}": f"Summary {i}" for i in range(1, paper_count + 1)}
+            mock_choice = MagicMock()
+            mock_choice.message.content = json.dumps(resp)
+            return MagicMock(choices=[mock_choice])
+
+        mock_completion.side_effect = fake_completion
+
+        result = llm_call(papers, "system prompt", make_settings(), "test")
+        # Should have results from the second batch, re-keyed to global indices
+        for i in range(LLM_BATCH_SIZE + 1, num_papers + 1):
+            assert f"paper_{i}" in result
+        # First batch papers should NOT be present (failed)
+        for i in range(1, LLM_BATCH_SIZE + 1):
+            assert f"paper_{i}" not in result
