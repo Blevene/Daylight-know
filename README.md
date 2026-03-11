@@ -11,55 +11,60 @@ any LLM provider through [litellm](https://github.com/BerriAI/litellm).
 ```
 arXiv API ─────────────┐
   (fetch pool)         │
-                       ├──> Interest-Based Ranking ──> Dedup & Seen Filter
-HuggingFace Daily ─────┤    (keyword + LLM scoring)          |
+                       ├──> Dedup & Seen Filter ──> Extract / Chunk / Store ALL
+HuggingFace Daily ─────┤                                      |
   (optional)           │                                      v
-                       │                             PDF Download / Abstract
-OpenAlex API ──────────┤                                      |
-  (optional,           │                                      v
-   fetch pool) ────────┘                             Text Extraction (PyMuPDF)
+                       │                             Vector Storage (ChromaDB)
+OpenAlex API ──────────┤                              [full corpus retained]
+  (optional,           │                                      |
+   fetch pool) ────────┘                                      v
+                                                     Interest-Based Ranking
+                                                     (keyword + LLM scoring)
                                                               |
                                                               v
-                                                     Semantic Chunking (Chonkie)
+                                                     Top N for Digest
+                                                              |
+                              GitHub Trending ──>             v
+                              (optional)          LLM Summarization (litellm)
                                                               |
                                                               v
-                                                     Vector Storage (ChromaDB)
-                                                              |
-                                                              v
-                              GitHub Trending ──> LLM Summarization (litellm)
-                              (optional)              |
-                                                      v
                                              Post-Processing (Implications & Critiques)
-                                                      |
-                                                      v
+                                                              |
+                                                              v
                                              Email Dispatch (SMTP/STARTTLS)
 ```
 
 ### Pipeline Steps
 
-1. **Fetch & Rank** — Queries the arXiv API for papers in your configured
-   topics, filtered to the preceding 24-hour window. When interest-based
-   ranking is configured, a larger "fetch pool" is retrieved (e.g., 200
-   papers) and then ranked by combined keyword boost + LLM relevance
-   scoring to select the top N. Optionally also fetches from HuggingFace
-   Daily Papers (community-upvoted) and OpenAlex (broad academic coverage
-   across 26 fields, also ranked when configured). Papers are deduplicated
-   across sources by DOI and filtered against a cross-day seen history.
+1. **Fetch** — Queries the arXiv API for papers in your configured topics,
+   filtered to the preceding 24-hour window. When interest-based ranking is
+   configured, a larger "fetch pool" is retrieved (e.g., 200 papers).
+   Optionally also fetches from HuggingFace Daily Papers (community-upvoted)
+   and OpenAlex (broad academic coverage across 26 fields). Papers are
+   deduplicated across sources by DOI and filtered against a 30-day seen
+   history.
 2. **Extract** — Uses PyMuPDF to pull raw text from each PDF. Image-only
-   documents are flagged as unparseable and stored separately.
+   documents are flagged as unparseable and stored separately. Papers
+   without PDFs (HuggingFace, OpenAlex) use their abstract.
 3. **Chunk** — Splits extracted text into semantic segments using Chonkie's
    `SemanticChunker` with the `potion-base-32M` embedding model.
 4. **Store** — Persists chunks with embeddings and metadata (title, authors,
-   URL, date, chunk index) in ChromaDB for future retrieval.
-5. **GitHub Trending** *(optional)* — Fetches recently-created trending
+   URL, date, chunk index) in ChromaDB for future retrieval. **All fetched
+   papers are stored** — not just the ones selected for the digest — so the
+   vector store builds a comprehensive corpus over time.
+5. **Rank** — When interest-based ranking is configured, papers are scored
+   by keyword match + LLM relevance and the top N per source are selected
+   for the digest (e.g., top 50 arXiv, top 20 OpenAlex). Papers that don't
+   make the digest cut are still in the vector store from step 4.
+6. **GitHub Trending** *(optional)* — Fetches recently-created trending
    repositories from GitHub and appends them to the LLM prompt.
-6. **Summarize** — Sends paper text to an LLM via litellm, producing
+7. **Summarize** — Sends paper text to an LLM via litellm, producing
    per-paper structured summaries. Supports OpenAI, Anthropic, Google,
    Cohere, Ollama, Azure, and 100+ other providers.
-7. **Post-process** — Optionally generates practical implications (who
+8. **Post-process** — Optionally generates practical implications (who
    benefits, how to apply) and structured critiques (strengths, weaknesses,
    open questions) via separate LLM calls.
-8. **Email** — Delivers the digest as a styled HTML + plaintext email via
+9. **Email** — Delivers the digest as a styled HTML + plaintext email via
    SMTP with STARTTLS, or prints to console in dry-run mode.
 
 ### What You Get

@@ -2,16 +2,15 @@
 
 Ties together all modules to execute the full daily digest workflow:
 
-  1. Fetch papers from arXiv (24-hour window)
-  1b. (Optional) Fetch papers from HuggingFace Daily Papers
-  1c. (Optional) Fetch papers from OpenAlex
-  2. Extract text from PDFs (PyMuPDF) — or use abstract for PDF-less papers
-  3. Chunk text semantically (Chonkie)
-  4. Store chunks + embeddings in ChromaDB
-  5. (Optional) Fetch GitHub trending repos
-  6. Summarize via LLM (per-paper JSON)
-  7. Post-process: implications & critiques (per-paper JSON)
-  8. Assemble per-paper analyses and send email digest
+  1. Fetch papers from arXiv (24-hour window), HuggingFace, OpenAlex
+  2. Deduplicate across sources and filter previously-seen papers
+  3. Extract text from PDFs (PyMuPDF) — or use abstract for PDF-less papers
+  4. Chunk text semantically (Chonkie) and store in ChromaDB (ALL papers)
+  5. Rank stored papers by interest relevance → select top N for digest
+  6. (Optional) Fetch GitHub trending repos
+  7. Summarize via LLM (per-paper JSON)
+  8. Post-process: implications & critiques (per-paper JSON)
+  9. Assemble per-paper analyses and send email digest
 """
 
 from __future__ import annotations
@@ -104,23 +103,12 @@ def run(settings: Settings | None = None) -> None:
     logger.info("Pipeline run started for %s (dry_run=%s).", date_str, settings.dry_run)
 
     # ── Step 1: Fetch papers from all enabled sources ───────────
-    # If ranking is enabled, fetch the larger pool
-    arxiv_fetch_size = settings.arxiv_max_results
-    if settings.interest_profile or settings.interest_keywords:
-        arxiv_fetch_size = settings.arxiv_fetch_pool
+    # Always fetch the full pool; ranking happens after storage.
+    arxiv_fetch_size = settings.arxiv_fetch_pool if (
+        settings.interest_profile or settings.interest_keywords
+    ) else settings.arxiv_max_results
 
     papers = fetch_papers(settings, max_results=arxiv_fetch_size)
-
-    # Rank arXiv papers if interest-based ranking is configured
-    if (settings.interest_profile or settings.interest_keywords) and len(
-        papers
-    ) > settings.arxiv_max_results:
-        papers = rank_papers(
-            papers,
-            settings,
-            max_results=settings.arxiv_max_results,
-        )
-        logger.info("arXiv: %d papers after ranking.", len(papers))
 
     # HuggingFace: deduplicate against arXiv, split into new vs trending
     hf_trending: list[HFDailyPaper] = []
@@ -154,14 +142,6 @@ def run(settings: Settings | None = None) -> None:
                 raw_id = p.paper_id.removeprefix("hf_").split("v")[0]
                 all_known_dois.add(f"10.48550/arXiv.{raw_id}")
         oa_papers = fetch_openalex_papers(settings, known_paper_ids=all_known_dois)
-        oa_papers = rank_papers(
-            oa_papers,
-            settings,
-            interest_profile=settings.openalex_interest_profile or settings.interest_profile,
-            interest_keywords=settings.openalex_interest_keywords or settings.interest_keywords,
-            max_results=settings.openalex_max_results,
-        )
-        logger.info("OpenAlex: %d papers after ranking.", len(oa_papers))
         papers.extend(oa_papers)
 
     # ── Cross-day deduplication ──────────────────────────────────
@@ -172,7 +152,9 @@ def run(settings: Settings | None = None) -> None:
         logger.warning("No papers found from any source. Exiting.")
         return
 
-    # ── Step 2-4: Extract → Chunk → Store ───────────────────────
+    # ── Step 2-4: Extract → Chunk → Store (all papers) ──────────
+    # Ingest the full fetch pool into the vector store for future
+    # retrieval, then rank down to the digest subset afterward.
     processed_papers = []
     for paper in papers:
         if paper.pdf_path is not None:
@@ -208,6 +190,40 @@ def run(settings: Settings | None = None) -> None:
     if not processed_papers:
         logger.warning("All papers were unparseable. Nothing to summarize.")
         return
+
+    logger.info("Stored %d papers in vector store.", len(processed_papers))
+
+    # ── Step 5: Rank for digest selection ─────────────────────────
+    # Separate papers by source so each gets its own ranking pool/limit.
+    arxiv_papers = [p for p in processed_papers if p.source == "arxiv"]
+    hf_papers = [p for p in processed_papers if p.source == "huggingface"]
+    oa_papers_stored = [p for p in processed_papers if p.source == "openalex"]
+
+    digest_papers: list[Paper] = []
+
+    if arxiv_papers:
+        ranked_arxiv = rank_papers(arxiv_papers, settings, max_results=settings.arxiv_max_results)
+        logger.info("arXiv: %d stored, %d selected for digest.", len(arxiv_papers), len(ranked_arxiv))
+        digest_papers.extend(ranked_arxiv)
+
+    digest_papers.extend(hf_papers)
+
+    if oa_papers_stored:
+        ranked_oa = rank_papers(
+            oa_papers_stored,
+            settings,
+            interest_profile=settings.openalex_interest_profile or settings.interest_profile,
+            interest_keywords=settings.openalex_interest_keywords or settings.interest_keywords,
+            max_results=settings.openalex_max_results,
+        )
+        logger.info("OpenAlex: %d stored, %d selected for digest.", len(oa_papers_stored), len(ranked_oa))
+        digest_papers.extend(ranked_oa)
+
+    if not digest_papers:
+        logger.warning("No papers selected for digest after ranking.")
+        return
+
+    processed_papers = digest_papers
 
     # ── Step 5: Optional GitHub trending ────────────────────────
     github_section = ""
