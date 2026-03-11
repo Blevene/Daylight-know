@@ -12,12 +12,36 @@ from digest_pipeline.llm_utils import (
     build_response_format,
     build_user_prompt,
     llm_call,
+    parse_llm_json,
 )
 
 _MAX_ATTEMPTS = 5  # must match llm_utils.max_backoff_attempts
 _EXPECTED_SLEEPS = [
     call(2**i) for i in range(1, _MAX_ATTEMPTS)
 ]  # [call(2), call(4), call(8), call(16)]
+
+
+class TestParseLlmJson:
+    def test_clean_json(self):
+        assert parse_llm_json('{"a": 1}') == {"a": 1}
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            '```json\n{"a": 1}\n```',
+            '```\n{"a": 1}\n```',
+            '```JSON\n{"a": 1}\n```',
+            '  ```json\n{"a": 1}\n```  ',
+            '```jsonc\n{"a": 1}\n```',
+        ],
+        ids=["json-tag", "no-tag", "uppercase", "whitespace", "jsonc-tag"],
+    )
+    def test_strips_fences(self, raw):
+        assert parse_llm_json(raw) == {"a": 1}
+
+    def test_invalid_json_raises(self):
+        with pytest.raises((json.JSONDecodeError, ValueError)):
+            parse_llm_json("not json at all")
 
 
 class TestBuildResponseFormat:

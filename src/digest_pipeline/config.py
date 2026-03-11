@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     # ── Cross-day deduplication ────────────────────────────────
     dedup_history_days: int = Field(default=30)
 
+    @property
+    def resolved_interest_profile(self) -> str:
+        """Return the best available interest profile, checking pipeline-wide then OpenAlex."""
+        return self.interest_profile or self.openalex_interest_profile
+
     # ── PDF download retry ──────────────────────────────────────
     pdf_download_max_retries: int = Field(default=3)
 

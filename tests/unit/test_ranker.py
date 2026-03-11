@@ -1,6 +1,8 @@
 """Tests for the paper ranker module."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from digest_pipeline.ranker import compute_keyword_scores, score_batch_with_llm, rank_papers
 
@@ -60,6 +62,31 @@ def test_llm_batch_scoring_handles_failure(mock_completion, make_paper, make_set
     settings = make_settings()
     scores = score_batch_with_llm(papers, settings, interest_profile="anything")
     assert scores == [0, 0]  # graceful degradation
+
+
+@pytest.mark.parametrize(
+    "fenced_json",
+    [
+        '```json\n{"paper_1": 7, "paper_2": 4}\n```',
+        '```\n{"paper_1": 7, "paper_2": 4}\n```',
+        '```JSON\n{"paper_1": 7, "paper_2": 4}\n```',
+        '  ```json\n{"paper_1": 7, "paper_2": 4}\n```  ',
+    ],
+    ids=["json-tag", "no-tag", "uppercase-tag", "whitespace-padded"],
+)
+@patch("digest_pipeline.ranker.litellm.completion")
+def test_llm_batch_scoring_strips_markdown_fences(
+    mock_completion, fenced_json, make_paper, make_settings
+):
+    mock_resp = MagicMock()
+    mock_resp.choices = [MagicMock()]
+    mock_resp.choices[0].message.content = fenced_json
+    mock_completion.return_value = mock_resp
+
+    papers = [make_paper(), make_paper()]
+    settings = make_settings()
+    scores = score_batch_with_llm(papers, settings, interest_profile="test")
+    assert scores == [7, 4]
 
 
 @patch("digest_pipeline.ranker.litellm.completion")

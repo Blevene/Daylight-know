@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from typing import Any
 
@@ -19,6 +20,20 @@ from digest_pipeline.fetcher import Paper
 logger = logging.getLogger(__name__)
 
 LLM_BATCH_SIZE = 7  # max papers per LLM call to avoid output truncation
+
+_FENCE_RE = re.compile(r"^```\w*\s*", re.IGNORECASE)
+_FENCE_END_RE = re.compile(r"\s*```$")
+
+
+def parse_llm_json(raw: str) -> Any:
+    """Parse JSON from an LLM response, stripping markdown code fences if present.
+
+    Many LLM providers (notably Gemini) wrap JSON output in markdown fences
+    like ````` ```json ... ``` `````.  This helper strips those before parsing.
+    """
+    cleaned = _FENCE_RE.sub("", raw.strip())
+    cleaned = _FENCE_END_RE.sub("", cleaned)
+    return json.loads(cleaned)
 
 
 def build_response_format(name: str, num_papers: int) -> dict[str, Any]:
@@ -114,8 +129,8 @@ def _llm_call_single(
                     continue
                 return {}
             try:
-                parsed = json.loads(raw)
-            except json.JSONDecodeError:
+                parsed = parse_llm_json(raw)
+            except (json.JSONDecodeError, ValueError):
                 logger.warning(
                     "LLM %s returned invalid JSON (attempt %d/%d): %.200s",
                     label,

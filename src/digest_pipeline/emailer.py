@@ -63,6 +63,8 @@ HTML_TEMPLATE = _html_env.from_string("""\
                border-radius: 3px; background: #e8f5e9; color: #2e7d32;
                margin: 2px 2px 0 0; }
   .section { line-height: 1.6; }
+  .section ul { margin: 8px 0; padding-left: 20px; }
+  .section li { margin-bottom: 4px; }
   .paper { margin-bottom: 10px; }
   hr { border: none; border-top: 1px solid #e2e2e2; margin: 30px 0; }
   .trending { margin-top: 30px; padding: 16px; background: #f8f8fc;

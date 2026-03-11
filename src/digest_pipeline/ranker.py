@@ -7,13 +7,13 @@ main digest pipeline for any source (arXiv, OpenAlex, etc.).
 
 from __future__ import annotations
 
-import json
 import logging
 
 import litellm
 
 from digest_pipeline.config import Settings
 from digest_pipeline.fetcher import Paper
+from digest_pipeline.llm_utils import parse_llm_json
 from digest_pipeline.prompts import load_prompt
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ def score_batch_with_llm(
     if not papers:
         return []
 
-    profile = interest_profile or settings.interest_profile or settings.openalex_interest_profile
+    profile = interest_profile or settings.resolved_interest_profile
     system_prompt = load_prompt("ranker").replace("{interest_profile}", profile)
 
     # Build user message with paper titles and abstracts
@@ -70,22 +70,6 @@ def score_batch_with_llm(
     for i, p in enumerate(papers, 1):
         parts.append(f"paper_{i}: {p.title}\n{p.abstract[:500]}")
     user_prompt = "\n---\n".join(parts)
-
-    # Build response format expecting integer scores
-    properties = {f"paper_{i}": {"type": "integer"} for i in range(1, len(papers) + 1)}
-    response_format = {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "relevance_scores",
-            "strict": True,
-            "schema": {
-                "type": "object",
-                "properties": properties,
-                "required": list(properties.keys()),
-                "additionalProperties": False,
-            },
-        },
-    }
 
     try:
         response = litellm.completion(
@@ -97,10 +81,9 @@ def score_batch_with_llm(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            response_format=response_format,
         )
         raw = response.choices[0].message.content or ""
-        parsed = json.loads(raw)
+        parsed = parse_llm_json(raw)
         return [
             max(0, min(10, int(parsed.get(f"paper_{i}", 0)))) for i in range(1, len(papers) + 1)
         ]
@@ -124,7 +107,7 @@ def rank_papers(
     pipeline-wide settings. If no interest profile or keywords are
     configured, returns papers unchanged.
     """
-    profile = interest_profile or settings.interest_profile
+    profile = interest_profile or settings.resolved_interest_profile
     keywords = interest_keywords if interest_keywords is not None else settings.interest_keywords
 
     if not profile and not keywords:
