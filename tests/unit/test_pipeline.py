@@ -314,7 +314,9 @@ def test_pipeline_calls_ranker_for_openalex(
 @patch("digest_pipeline.pipeline.chunk_text", return_value=["chunk1"])
 @patch("digest_pipeline.pipeline.generate_critiques", return_value={})
 @patch("digest_pipeline.pipeline.extract_implications", return_value={})
-@patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "summary", "paper_2": "summary"})
+@patch(
+    "digest_pipeline.pipeline.summarize", return_value={"paper_1": "summary", "paper_2": "summary"}
+)
 @patch("digest_pipeline.pipeline.fetch_papers")
 @patch("digest_pipeline.pipeline.rank_papers")
 def test_arxiv_papers_ranked_when_interest_configured(

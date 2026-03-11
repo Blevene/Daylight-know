@@ -59,7 +59,9 @@ def test_llm_call_respects_max_tokens(mock_completion, make_paper, make_settings
 
 @patch("digest_pipeline.llm_utils.time.sleep")
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_llm_call_empty_content_returns_empty_dict(mock_completion, _mock_sleep, make_paper, make_settings):
+def test_llm_call_empty_content_returns_empty_dict(
+    mock_completion, _mock_sleep, make_paper, make_settings
+):
     mock_choice = MagicMock()
     mock_choice.message.content = None
     mock_completion.return_value = MagicMock(choices=[mock_choice])
@@ -70,7 +72,9 @@ def test_llm_call_empty_content_returns_empty_dict(mock_completion, _mock_sleep,
 
 @patch("digest_pipeline.llm_utils.time.sleep")
 @patch("digest_pipeline.llm_utils.litellm.completion")
-def test_llm_call_malformed_json_returns_empty_dict(mock_completion, _mock_sleep, make_paper, make_settings):
+def test_llm_call_malformed_json_returns_empty_dict(
+    mock_completion, _mock_sleep, make_paper, make_settings
+):
     mock_choice = MagicMock()
     mock_choice.message.content = "Not JSON at all."
     mock_completion.return_value = MagicMock(choices=[mock_choice])

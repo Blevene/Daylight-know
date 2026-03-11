@@ -112,7 +112,9 @@ def run(settings: Settings | None = None) -> None:
     papers = fetch_papers(settings, max_results=arxiv_fetch_size)
 
     # Rank arXiv papers if interest-based ranking is configured
-    if (settings.interest_profile or settings.interest_keywords) and len(papers) > settings.arxiv_max_results:
+    if (settings.interest_profile or settings.interest_keywords) and len(
+        papers
+    ) > settings.arxiv_max_results:
         papers = rank_papers(
             papers,
             settings,
@@ -225,7 +227,9 @@ def run(settings: Settings | None = None) -> None:
     if settings.postprocessing_critiques:
         critiques = generate_critiques(processed_papers, settings)
         if not critiques:
-            logger.error("Critique generation returned no results for %d papers.", len(processed_papers))
+            logger.error(
+                "Critique generation returned no results for %d papers.", len(processed_papers)
+            )
 
     # ── Step 8: Assemble & send ─────────────────────────────────
     analyses = _build_analyses(processed_papers, summaries, implications, critiques)

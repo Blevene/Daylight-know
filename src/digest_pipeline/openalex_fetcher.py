@@ -118,8 +118,10 @@ def fetch_openalex_papers(
 
     # Use fetch_pool size when ranking is configured, otherwise max_results
     has_ranking = bool(
-        settings.openalex_interest_profile or settings.openalex_interest_keywords
-        or settings.interest_profile or settings.interest_keywords
+        settings.openalex_interest_profile
+        or settings.openalex_interest_keywords
+        or settings.interest_profile
+        or settings.interest_keywords
     )
     pool_size = settings.openalex_fetch_pool if has_ranking else settings.openalex_max_results
 

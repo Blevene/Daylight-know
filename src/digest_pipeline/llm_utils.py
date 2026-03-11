@@ -103,7 +103,12 @@ def _llm_call_single(
             raw = response.choices[0].message.content or ""
             logger.info("LLM %s complete (%d chars).", label, len(raw))
             if not raw:
-                logger.warning("LLM %s returned empty content (attempt %d/%d).", label, attempt, max_backoff_attempts)
+                logger.warning(
+                    "LLM %s returned empty content (attempt %d/%d).",
+                    label,
+                    attempt,
+                    max_backoff_attempts,
+                )
                 if attempt < max_backoff_attempts:
                     time.sleep(2**attempt)
                     continue
@@ -156,7 +161,9 @@ def _llm_call_single(
                 exc,
             )
             if attempt == max_backoff_attempts:
-                logger.error("LLM %s rate-limited after %d attempts; skipping.", label, max_backoff_attempts)
+                logger.error(
+                    "LLM %s rate-limited after %d attempts; skipping.", label, max_backoff_attempts
+                )
                 return {}
             time.sleep(wait)
         except Exception:
@@ -197,7 +204,9 @@ def llm_call(
         batch_label = f"{label} batch {batch_num}"
         # Only first batch gets github_section to avoid duplication
         gh = github_section if batch_start == 0 else ""
-        batch_result = _llm_call_single(batch, system_prompt, settings, batch_label, schema_name, gh)
+        batch_result = _llm_call_single(
+            batch, system_prompt, settings, batch_label, schema_name, gh
+        )
         # Re-key from batch-local paper_N to global paper_N
         for local_key, value in batch_result.items():
             # local_key is "paper_1", "paper_2", etc. within the batch

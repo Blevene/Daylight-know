@@ -46,7 +46,9 @@ def test_llm_batch_scoring(mock_completion, make_paper, make_settings):
         make_paper(title="Image Segmentation"),
     ]
     settings = make_settings()
-    scores = score_batch_with_llm(papers, settings, interest_profile="I study LLMs for drug discovery")
+    scores = score_batch_with_llm(
+        papers, settings, interest_profile="I study LLMs for drug discovery"
+    )
     assert scores == [8, 3]
 
 

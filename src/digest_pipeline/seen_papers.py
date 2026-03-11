@@ -54,9 +54,7 @@ def save_seen(
     pruned = {pid: date for pid, date in seen.items() if date >= cutoff}
 
     if len(pruned) < len(seen):
-        logger.info(
-            "Pruned %d stale entries from seen-papers ledger.", len(seen) - len(pruned)
-        )
+        logger.info("Pruned %d stale entries from seen-papers ledger.", len(seen) - len(pruned))
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(pruned, indent=2) + "\n", encoding="utf-8")

@@ -63,9 +63,7 @@ def score_batch_with_llm(
         return []
 
     profile = interest_profile or settings.interest_profile or settings.openalex_interest_profile
-    system_prompt = load_prompt("ranker").replace(
-        "{interest_profile}", profile
-    )
+    system_prompt = load_prompt("ranker").replace("{interest_profile}", profile)
 
     # Build user message with paper titles and abstracts
     parts: list[str] = []
