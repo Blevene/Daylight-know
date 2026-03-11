@@ -402,16 +402,16 @@ def _collect_optional_settings() -> dict[str, str]:
         selected_fields = _collect_openalex_fields()
         if selected_fields:
             config["OPENALEX_FIELDS"] = _json.dumps(selected_fields)
-        # Interest-based ranking
+        # Interest-based ranking (pipeline-wide — applies to arXiv + OpenAlex)
         if _prompt_bool("Enable interest-based paper ranking?", default=False):
-            config["OPENALEX_INTEREST_PROFILE"] = _prompt(
+            config["INTEREST_PROFILE"] = _prompt(
                 "Describe your research interests (natural language)"
             )
             keywords = _prompt("Boost keywords (comma-separated, optional)")
             if keywords:
                 kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
-                config["OPENALEX_INTEREST_KEYWORDS"] = _json.dumps(kw_list)
-            config["OPENALEX_FETCH_POOL"] = _prompt("Papers to fetch before ranking", "100")
+                config["INTEREST_KEYWORDS"] = _json.dumps(kw_list)
+            config["ARXIV_FETCH_POOL"] = _prompt("arXiv papers to fetch before ranking", "200")
     else:
         config["OPENALEX_ENABLED"] = "false"
 
@@ -533,6 +533,10 @@ def _write_env_file(config: dict[str, str], path: Path) -> None:
             ["HUGGINGFACE_ENABLED", "HUGGINGFACE_TOKEN", "HUGGINGFACE_MAX_RESULTS"],
         ),
         (
+            "Interest-Based Ranking",
+            ["INTEREST_PROFILE", "INTEREST_KEYWORDS", "ARXIV_FETCH_POOL"],
+        ),
+        (
             "Optional: OpenAlex",
             [
                 "OPENALEX_ENABLED",
@@ -541,9 +545,6 @@ def _write_env_file(config: dict[str, str], path: Path) -> None:
                 "OPENALEX_MAX_RESULTS",
                 "OPENALEX_QUERY",
                 "OPENALEX_FIELDS",
-                "OPENALEX_INTEREST_PROFILE",
-                "OPENALEX_INTEREST_KEYWORDS",
-                "OPENALEX_FETCH_POOL",
             ],
         ),
         (
