@@ -24,11 +24,12 @@ class Settings(BaseSettings):
     # ── arXiv ───────────────────────────────────────────────────
     arxiv_topics: list[str] = Field(default=["cs.AI", "cs.LG"])
     arxiv_max_results: int = Field(default=50)
+    arxiv_fetch_pool: int = Field(default=200)
 
     # ── LLM (via litellm — supports any provider) ─────────────
     llm_api_key: str = Field(default="")
     llm_model: str = Field(default="openai/gpt-4o-mini")
-    llm_max_tokens: int = Field(default=16384)
+    llm_max_tokens: int = Field(default=32768)
     llm_api_base: str | None = Field(default=None)
 
     # ── ChromaDB ────────────────────────────────────────────────
@@ -70,6 +71,10 @@ class Settings(BaseSettings):
     # ── Post-processing (optional) ──────────────────────────────
     postprocessing_implications: bool = Field(default=True)
     postprocessing_critiques: bool = Field(default=True)
+
+    # ── Interest-based ranking (pipeline-wide) ───────────────
+    interest_profile: str = Field(default="")
+    interest_keywords: list[str] = Field(default_factory=list)
 
     # ── Cross-day deduplication ────────────────────────────────
     dedup_history_days: int = Field(default=30)
