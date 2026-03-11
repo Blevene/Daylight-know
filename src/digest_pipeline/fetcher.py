@@ -71,20 +71,24 @@ def download_pdf(url: str, dest: Path, max_retries: int = 3) -> bool:
     return False
 
 
-def fetch_papers(settings: Settings) -> list[Paper]:
+def fetch_papers(settings: Settings, *, max_results: int | None = None) -> list[Paper]:
     """Query arXiv for recent papers matching the configured topics.
 
     Papers outside the 24-hour window are filtered out.  PDFs that fail
     to download after ``settings.pdf_download_max_retries`` attempts are
     logged and skipped (EARS 2.4-1).
+
+    *max_results* overrides ``settings.arxiv_max_results`` when provided
+    (e.g. to fetch a larger pool for ranking).
     """
+    effective_max = max_results or settings.arxiv_max_results
     query = " OR ".join(f"cat:{topic}" for topic in settings.arxiv_topics)
-    logger.info("Querying arXiv: %s (max %d)", query, settings.arxiv_max_results)
+    logger.info("Querying arXiv: %s (max %d)", query, effective_max)
 
     client = arxiv.Client()
     search = arxiv.Search(
         query=query,
-        max_results=settings.arxiv_max_results,
+        max_results=effective_max,
         sort_by=arxiv.SortCriterion.SubmittedDate,
     )
 

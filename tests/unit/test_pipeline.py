@@ -118,7 +118,7 @@ def test_run_full_pipeline(
 
     run(settings)
 
-    mock_fetch.assert_called_once_with(settings)
+    mock_fetch.assert_called_once_with(settings, max_results=settings.arxiv_max_results)
     mock_extract.assert_called_once()
     mock_chunk.assert_called_once_with("content")
     mock_store.assert_called_once()
@@ -303,3 +303,52 @@ def test_pipeline_calls_ranker_for_openalex(
 
     mock_rank.assert_called_once()
     assert mock_rank.call_args[0][0] == [oa_paper]
+
+
+@patch("digest_pipeline.pipeline.save_seen")
+@patch("digest_pipeline.pipeline.record_papers")
+@patch("digest_pipeline.pipeline.filter_unseen", side_effect=lambda papers, seen: papers)
+@patch("digest_pipeline.pipeline.load_seen", return_value={})
+@patch("digest_pipeline.pipeline.send_digest")
+@patch("digest_pipeline.pipeline.store_chunks")
+@patch("digest_pipeline.pipeline.chunk_text", return_value=["chunk1"])
+@patch("digest_pipeline.pipeline.generate_critiques", return_value={})
+@patch("digest_pipeline.pipeline.extract_implications", return_value={})
+@patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "summary", "paper_2": "summary"})
+@patch("digest_pipeline.pipeline.fetch_papers")
+@patch("digest_pipeline.pipeline.rank_papers")
+def test_arxiv_papers_ranked_when_interest_configured(
+    mock_rank,
+    mock_fetch,
+    mock_summarize,
+    mock_impl,
+    mock_critiques,
+    mock_chunk,
+    mock_store,
+    mock_send,
+    mock_load_seen,
+    mock_filter,
+    mock_record,
+    mock_save,
+    make_paper,
+    make_settings,
+):
+    """arXiv papers should be ranked when interest profile is set."""
+    arxiv_papers = [make_paper(paper_id=f"p{i}", abstract=f"abstract {i}") for i in range(5)]
+    mock_fetch.return_value = arxiv_papers
+    mock_rank.return_value = arxiv_papers[:2]  # ranked down to 2
+
+    settings = make_settings(
+        interest_profile="AI safety research",
+        interest_keywords=["alignment"],
+        arxiv_max_results=2,
+        arxiv_fetch_pool=50,
+        postprocessing_implications=False,
+        postprocessing_critiques=False,
+    )
+    run(settings)
+
+    mock_rank.assert_called_once()
+    call_args = mock_rank.call_args
+    assert len(call_args[0][0]) == 5  # all papers passed to ranker
+    assert call_args[1]["max_results"] == 2

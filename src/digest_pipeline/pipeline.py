@@ -104,7 +104,21 @@ def run(settings: Settings | None = None) -> None:
     logger.info("Pipeline run started for %s (dry_run=%s).", date_str, settings.dry_run)
 
     # ── Step 1: Fetch papers from all enabled sources ───────────
-    papers = fetch_papers(settings)
+    # If ranking is enabled, fetch the larger pool
+    arxiv_fetch_size = settings.arxiv_max_results
+    if settings.interest_profile or settings.interest_keywords:
+        arxiv_fetch_size = settings.arxiv_fetch_pool
+
+    papers = fetch_papers(settings, max_results=arxiv_fetch_size)
+
+    # Rank arXiv papers if interest-based ranking is configured
+    if (settings.interest_profile or settings.interest_keywords) and len(papers) > settings.arxiv_max_results:
+        papers = rank_papers(
+            papers,
+            settings,
+            max_results=settings.arxiv_max_results,
+        )
+        logger.info("arXiv: %d papers after ranking.", len(papers))
 
     # HuggingFace: deduplicate against arXiv, split into new vs trending
     hf_trending: list[HFDailyPaper] = []
@@ -138,7 +152,13 @@ def run(settings: Settings | None = None) -> None:
                 raw_id = p.paper_id.removeprefix("hf_").split("v")[0]
                 all_known_dois.add(f"10.48550/arXiv.{raw_id}")
         oa_papers = fetch_openalex_papers(settings, known_paper_ids=all_known_dois)
-        oa_papers = rank_papers(oa_papers, settings)
+        oa_papers = rank_papers(
+            oa_papers,
+            settings,
+            interest_profile=settings.openalex_interest_profile or settings.interest_profile,
+            interest_keywords=settings.openalex_interest_keywords or settings.interest_keywords,
+            max_results=settings.openalex_max_results,
+        )
         logger.info("OpenAlex: %d papers after ranking.", len(oa_papers))
         papers.extend(oa_papers)
 
