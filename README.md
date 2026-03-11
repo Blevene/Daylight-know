@@ -10,31 +10,41 @@ any LLM provider through [litellm](https://github.com/BerriAI/litellm).
 
 ```
 arXiv API ─────────────┐
-                       ├──> PDF Download ──> Text Extraction (PyMuPDF)
-HuggingFace Daily ─────┤                            |
-  (optional)           │                            v
-                       │                   Semantic Chunking (Chonkie)
-OpenAlex API ──────────┤                            |
-  (optional,           │                            v
-   with ranking) ──────┘                   Vector Storage (ChromaDB)
-                                                    |
-                                                    v
-                            GitHub Trending ──> LLM Summarization (litellm)
-                            (optional)              |
-                                                    v
-                                           Post-Processing (Implications & Critiques)
-                                                    |
-                                                    v
-                                           Email Dispatch (SMTP/STARTTLS)
+  (fetch pool)         │
+                       ├──> Interest-Based Ranking ──> Dedup & Seen Filter
+HuggingFace Daily ─────┤    (keyword + LLM scoring)          |
+  (optional)           │                                      v
+                       │                             PDF Download / Abstract
+OpenAlex API ──────────┤                                      |
+  (optional,           │                                      v
+   fetch pool) ────────┘                             Text Extraction (PyMuPDF)
+                                                              |
+                                                              v
+                                                     Semantic Chunking (Chonkie)
+                                                              |
+                                                              v
+                                                     Vector Storage (ChromaDB)
+                                                              |
+                                                              v
+                              GitHub Trending ──> LLM Summarization (litellm)
+                              (optional)              |
+                                                      v
+                                             Post-Processing (Implications & Critiques)
+                                                      |
+                                                      v
+                                             Email Dispatch (SMTP/STARTTLS)
 ```
 
 ### Pipeline Steps
 
-1. **Fetch** — Queries the arXiv API for papers in your configured topics,
-   filtered to the preceding 24-hour window. PDFs are downloaded with
-   configurable retry logic. Optionally also fetches from HuggingFace
+1. **Fetch & Rank** — Queries the arXiv API for papers in your configured
+   topics, filtered to the preceding 24-hour window. When interest-based
+   ranking is configured, a larger "fetch pool" is retrieved (e.g., 200
+   papers) and then ranked by combined keyword boost + LLM relevance
+   scoring to select the top N. Optionally also fetches from HuggingFace
    Daily Papers (community-upvoted) and OpenAlex (broad academic coverage
-   across 26 fields). Papers are deduplicated across sources by DOI.
+   across 26 fields, also ranked when configured). Papers are deduplicated
+   across sources by DOI and filtered against a cross-day seen history.
 2. **Extract** — Uses PyMuPDF to pull raw text from each PDF. Image-only
    documents are flagged as unparseable and stored separately.
 3. **Chunk** — Splits extracted text into semantic segments using Chonkie's
@@ -134,7 +144,8 @@ All settings are configured via environment variables in `.env`:
 | Variable | Description | Default |
 |---|---|---|
 | `ARXIV_TOPICS` | Comma-separated arXiv category codes | `cs.AI,cs.LG` |
-| `ARXIV_MAX_RESULTS` | Max papers to fetch per run | `50` |
+| `ARXIV_MAX_RESULTS` | Max papers to include in digest | `50` |
+| `ARXIV_FETCH_POOL` | Papers to fetch before ranking (when ranking is enabled) | `200` |
 
 #### LLM Settings
 
@@ -142,7 +153,7 @@ All settings are configured via environment variables in `.env`:
 |---|---|---|
 | `LLM_MODEL` | litellm model string | `openai/gpt-4o-mini` |
 | `LLM_API_KEY` | API key for your LLM provider | *required* |
-| `LLM_MAX_TOKENS` | Max tokens for LLM responses | `4096` |
+| `LLM_MAX_TOKENS` | Max tokens for LLM responses | `32768` |
 | `LLM_API_BASE` | Custom API base URL (optional) | — |
 
 The `LLM_MODEL` uses litellm's provider/model format. Examples:
@@ -219,33 +230,49 @@ Valid fields: `Computer Science`, `Mathematics`, `Physics and Astronomy`,
 `Chemistry`, `Engineering`, `Medicine`, `Psychology`, and 19 others
 (26 total). See the setup wizard for the full list.
 
-#### Interest-Based Ranking (Optional, requires OpenAlex)
+#### Interest-Based Ranking (Optional)
 
-When configured, the pipeline fetches a larger pool of OpenAlex papers and
-uses LLM scoring to select only the most relevant ones for your digest.
+When configured, the pipeline fetches a larger "fetch pool" of papers from
+each source and uses LLM scoring to select only the most relevant ones for
+your digest. Ranking applies to **both arXiv and OpenAlex** papers.
+
+**Pipeline-wide settings** (apply to all sources):
 
 | Variable | Description | Default |
 |---|---|---|
-| `OPENALEX_INTEREST_PROFILE` | Natural language description of your research interests | — |
-| `OPENALEX_INTEREST_KEYWORDS` | JSON array of boost keywords | — |
-| `OPENALEX_FETCH_POOL` | Papers to fetch before ranking | `100` |
+| `INTEREST_PROFILE` | Natural language description of your research interests | — |
+| `INTEREST_KEYWORDS` | JSON array of boost keywords | — |
+
+**OpenAlex-specific overrides** (take priority over pipeline-wide for OpenAlex):
+
+| Variable | Description | Default |
+|---|---|---|
+| `OPENALEX_INTEREST_PROFILE` | OpenAlex-specific interest profile | — |
+| `OPENALEX_INTEREST_KEYWORDS` | OpenAlex-specific boost keywords | — |
+| `OPENALEX_FETCH_POOL` | OpenAlex papers to fetch before ranking | `100` |
 
 **How it works:** The ranker scores each paper using two signals:
 1. **Keyword boost** — +2 points per keyword match in title or abstract
 2. **LLM scoring** — Papers are sent in batches of 20 to your configured
    LLM, which rates each paper 1-10 against your interest profile
 
-Papers are ranked by combined score and the top `OPENALEX_MAX_RESULTS` are
-kept. If the LLM call fails, keyword-only ranking is used as a fallback.
-If neither profile nor keywords are configured, all fetched papers pass
-through (backward compatible).
+For arXiv, `ARXIV_FETCH_POOL` papers are fetched and ranked down to
+`ARXIV_MAX_RESULTS`. For OpenAlex, `OPENALEX_FETCH_POOL` papers are
+fetched and ranked down to `OPENALEX_MAX_RESULTS`. If the LLM call fails,
+keyword-only ranking is used as a fallback. If neither profile nor keywords
+are configured, all fetched papers pass through (backward compatible).
+
+Only the top-ranked papers proceed to PDF download, vector storage, and
+LLM summarization — the ranking step is a pre-filter that saves processing
+time and API costs.
 
 **Example:**
 
 ```env
-OPENALEX_INTEREST_PROFILE="AI applications including world models, frontier AI methods, memory and retrieval systems, and cybersecurity"
-OPENALEX_INTEREST_KEYWORDS=["world model","RAG","knowledge graph","cybersecurity","LLM","reasoning","agent"]
-OPENALEX_FETCH_POOL="100"
+INTEREST_PROFILE="AI applications including world models, frontier AI methods, memory and retrieval systems, and cybersecurity"
+INTEREST_KEYWORDS=["world model","RAG","knowledge graph","cybersecurity","LLM","reasoning","agent"]
+ARXIV_FETCH_POOL=200
+OPENALEX_FETCH_POOL=100
 ```
 
 #### GitHub Trending (Optional)
@@ -426,6 +453,7 @@ src/digest_pipeline/
 │   ├── critiques.md     # Structured critique prompt
 │   └── ranker.md        # Interest-based relevance scoring prompt
 ├── ranker.py            # Interest-based paper ranking (keyword + LLM scoring)
+├── seen_papers.py       # Cross-day deduplication tracking
 ├── setup.py             # Interactive setup wizard
 ├── summarizer.py        # LLM-powered summarization with backoff
 ├── topics_cli.py        # Topic browser CLI
