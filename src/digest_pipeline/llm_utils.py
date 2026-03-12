@@ -23,6 +23,32 @@ LLM_BATCH_SIZE = 7  # max papers per LLM call to avoid output truncation
 
 _FENCE_RE = re.compile(r"^```\w*\s*", re.IGNORECASE)
 _FENCE_END_RE = re.compile(r"\s*```$")
+_BOLD_HEADER_RE = re.compile(r"(?<!\n)(\*\*[^*]+:\*\*)")
+_BULLET_RE = re.compile(r"(?<!\n)([•\-] )")
+
+
+def _normalize_markdown_bullets(text: str) -> str:
+    """Ensure markdown bullet points and bold headers have proper newlines.
+
+    LLMs (notably Gemini) often compress structured markdown into a single
+    line within JSON string values, e.g.::
+
+        "**Strengths:** - point 1 - point 2 **Weaknesses:** - point 3"
+
+    or using Unicode bullets::
+
+        "**Strengths:** • point 1 • point 2 **Weaknesses:** • point 3"
+
+    This function inserts newlines so that mistune can parse bullet lists
+    and bold headers correctly.
+    """
+    # Normalize Unicode bullets to markdown dashes
+    text = text.replace("• ", "- ")
+    # Ensure bold section headers (e.g. **Strengths:**) start on a new line
+    text = _BOLD_HEADER_RE.sub(r"\n\n\1", text)
+    # Ensure each bullet item starts on a new line
+    text = _BULLET_RE.sub(r"\n\1", text)
+    return text.strip()
 
 
 def parse_llm_json(raw: str) -> Any:

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from digest_pipeline.config import Settings
 from digest_pipeline.fetcher import Paper
-from digest_pipeline.llm_utils import llm_call
+from digest_pipeline.llm_utils import _normalize_markdown_bullets, llm_call
 from digest_pipeline.prompts import load_prompt
 
 IMPLICATIONS_SYSTEM_PROMPT = load_prompt("implications")
@@ -29,13 +29,14 @@ def extract_implications(papers: list[Paper], settings: Settings) -> dict[str, s
     Enforces ``settings.llm_max_tokens`` and retries with exponential
     backoff on rate-limit errors, matching the summarizer contract.
     """
-    return llm_call(
+    raw = llm_call(
         papers,
         IMPLICATIONS_SYSTEM_PROMPT,
         settings,
         label="implications",
         schema_name="paper_implications",
     )
+    return {k: _normalize_markdown_bullets(v) for k, v in raw.items()}
 
 
 def generate_critiques(papers: list[Paper], settings: Settings) -> dict[str, str]:
@@ -45,10 +46,11 @@ def generate_critiques(papers: list[Paper], settings: Settings) -> dict[str, str
     Enforces ``settings.llm_max_tokens`` and retries with exponential
     backoff on rate-limit errors, matching the summarizer contract.
     """
-    return llm_call(
+    raw = llm_call(
         papers,
         CRITIQUES_SYSTEM_PROMPT,
         settings,
         label="critiques",
         schema_name="paper_critiques",
     )
+    return {k: _normalize_markdown_bullets(v) for k, v in raw.items()}

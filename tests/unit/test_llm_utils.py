@@ -9,6 +9,7 @@ import pytest
 
 from digest_pipeline.llm_utils import (
     LLM_BATCH_SIZE,
+    _normalize_markdown_bullets,
     build_response_format,
     build_user_prompt,
     llm_call,
@@ -42,6 +43,61 @@ class TestParseLlmJson:
     def test_invalid_json_raises(self):
         with pytest.raises((json.JSONDecodeError, ValueError)):
             parse_llm_json("not json at all")
+
+
+class TestNormalizeMarkdownBullets:
+    """Verify that LLM output with compressed markdown gets proper newlines."""
+
+    def test_already_formatted_unchanged(self):
+        text = "**Strengths:**\n- point 1\n- point 2\n\n**Weaknesses:**\n- point 3"
+        result = _normalize_markdown_bullets(text)
+        assert "- point 1\n- point 2" in result
+        assert "<li>" not in result  # still markdown, not HTML
+
+    def test_single_line_bullets_get_newlines(self):
+        text = "**Strengths:** - point 1 - point 2 **Weaknesses:** - point 3"
+        result = _normalize_markdown_bullets(text)
+        # Each bullet should be on its own line
+        lines = result.split("\n")
+        bullet_lines = [l for l in lines if l.startswith("- ")]
+        assert len(bullet_lines) == 3
+
+    def test_bold_headers_get_paragraph_breaks(self):
+        text = "**Strengths:** - point 1 **Weaknesses:** - point 2"
+        result = _normalize_markdown_bullets(text)
+        assert "\n\n**Weaknesses:**" in result
+
+    def test_renders_as_html_list(self):
+        """End-to-end: compressed LLM output -> normalize -> mistune -> <li> tags."""
+        import mistune
+
+        md = mistune.create_markdown()
+        compressed = "**Strengths:** - point 1 - point 2 **Weaknesses:** - point 3"
+        normalized = _normalize_markdown_bullets(compressed)
+        html = md(normalized)
+        assert "<li>" in html, f"Expected <li> in HTML but got:\n{html}"
+        assert html.count("<li>") == 3
+
+    def test_unicode_bullets_converted_and_split(self):
+        text = "**Who Benefits:** • Engineers • Scientists **Applications:** • Tool A • Tool B"
+        result = _normalize_markdown_bullets(text)
+        lines = result.split("\n")
+        bullet_lines = [l for l in lines if l.startswith("- ")]
+        assert len(bullet_lines) == 4
+
+    def test_unicode_bullets_render_as_html_list(self):
+        import mistune
+
+        md = mistune.create_markdown()
+        compressed = "**Strengths:** • point 1 • point 2 **Weaknesses:** • point 3"
+        normalized = _normalize_markdown_bullets(compressed)
+        html = md(normalized)
+        assert "<li>" in html, f"Expected <li> in HTML but got:\n{html}"
+        assert html.count("<li>") == 3
+
+    def test_no_op_for_plain_text(self):
+        text = "This is a simple summary with no bullets."
+        assert _normalize_markdown_bullets(text) == text
 
 
 class TestBuildResponseFormat:
