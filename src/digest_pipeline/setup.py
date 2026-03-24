@@ -383,6 +383,7 @@ def _collect_optional_settings() -> dict[str, str]:
     )
 
     config["PDF_DOWNLOAD_MAX_RETRIES"] = _prompt("PDF download max retries", "3")
+    config["PDF_DOWNLOAD_WORKERS"] = _prompt("Parallel PDF download workers", "8")
 
     if _prompt_bool("Enable HuggingFace Daily Papers?", default=False):
         config["HUGGINGFACE_ENABLED"] = "true"
@@ -526,7 +527,7 @@ def _write_env_file(config: dict[str, str], path: Path) -> None:
         ),
         (
             "PDF Download",
-            ["PDF_DOWNLOAD_MAX_RETRIES"],
+            ["PDF_DOWNLOAD_MAX_RETRIES", "PDF_DOWNLOAD_WORKERS"],
         ),
         (
             "Optional: HuggingFace Daily Papers",
