@@ -38,6 +38,7 @@ from digest_pipeline.hf_fetcher import (
 )
 from digest_pipeline.postprocessor import extract_implications, generate_critiques
 from digest_pipeline.openalex_fetcher import fetch_openalex_papers
+from digest_pipeline.archiver import archive_papers
 from digest_pipeline.ranker import rank_papers
 from digest_pipeline.seen_papers import filter_unseen, load_seen, record_papers, save_seen
 from digest_pipeline.summarizer import summarize
@@ -200,6 +201,10 @@ def run(settings: Settings | None = None) -> None:
             sys.exit(1)
 
         processed_papers.append(paper)
+
+    # ── Archive PDFs (optional) ──────────────────────────────────
+    if settings.pdf_archive_dir:
+        archive_papers(papers, date_str, settings)
 
     # Clean up downloaded PDFs — text has been extracted and stored.
     _cleanup_pdf_dirs(papers)
