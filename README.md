@@ -9,7 +9,7 @@ any LLM provider through [litellm](https://github.com/BerriAI/litellm).
 ## How It Works
 
 ```
-arXiv API ─────────────┐
+arXiv RSS ─────────────┐
   (fetch pool)         │
                        ├──> Dedup & Seen Filter ──> Extract / Chunk / Store ALL
 HuggingFace Daily ─────┤                                      |
@@ -36,14 +36,14 @@ OpenAlex API ──────────┤                              [ful
 
 ### Pipeline Steps
 
-1. **Fetch** — Queries the arXiv API for papers in your configured topics,
-   filtered to the preceding 24-hour window. When interest-based ranking is
-   configured, a larger "fetch pool" is retrieved (e.g., 200 papers).
+1. **Fetch** — Fetches papers from the arXiv RSS feed for your configured
+   topics. When interest-based ranking is configured, a larger "fetch pool"
+   is retrieved (e.g., 200 papers). PDFs are downloaded in parallel.
    Optionally also fetches from HuggingFace Daily Papers (community-upvoted)
    and OpenAlex (broad academic coverage across 26 fields). Papers are
    deduplicated across sources by DOI and filtered against a 30-day seen
    history.
-2. **Extract** — Uses PyMuPDF to pull raw text from each PDF. Image-only
+2. **Extract** — Uses pypdf to pull raw text from each PDF. Image-only
    documents are flagged as unparseable and stored separately. Papers
    without PDFs (HuggingFace, OpenAlex) use their abstract.
 3. **Chunk** — Splits extracted text into semantic segments using Chonkie's
@@ -200,6 +200,7 @@ generate one for "Mail", and use it as `SMTP_PASSWORD`.
 |---|---|---|
 | `DRY_RUN` | Print digest to console instead of emailing | `true` |
 | `PDF_DOWNLOAD_MAX_RETRIES` | PDF download retry attempts | `3` |
+| `PDF_DOWNLOAD_WORKERS` | Parallel PDF download threads | `8` |
 
 #### Post-Processing
 
@@ -267,9 +268,9 @@ fetched and ranked down to `OPENALEX_MAX_RESULTS`. If the LLM call fails,
 keyword-only ranking is used as a fallback. If neither profile nor keywords
 are configured, all fetched papers pass through (backward compatible).
 
-Only the top-ranked papers proceed to PDF download, vector storage, and
-LLM summarization — the ranking step is a pre-filter that saves processing
-time and API costs.
+Only the top-ranked papers proceed to LLM summarization — the ranking step
+saves API costs. All fetched papers are still stored in the vector store
+for future retrieval.
 
 **Example:**
 
@@ -413,9 +414,8 @@ journalctl -u digest-pipeline.service  # view logs
 |---|---|---|
 | [litellm](https://github.com/BerriAI/litellm) | >=1.30 | Universal LLM gateway — routes to OpenAI, Anthropic, Google, Ollama, Azure, and 100+ other providers |
 | [ChromaDB](https://www.trychroma.com/) | >=0.5 | Local vector store with persistent SQLite + HNSW indexing for chunk storage and retrieval |
-| [PyMuPDF (fitz)](https://pymupdf.readthedocs.io/) | >=1.24 | PDF text extraction |
+| [pypdf](https://pypi.org/project/pypdf/) | >=5.0 | PDF text extraction |
 | [Chonkie](https://github.com/chonkie-ai/chonkie) | >=1.0 | Semantic text chunking with the `potion-base-32M` embedding model |
-| [arxiv](https://github.com/lukasschwab/arxiv.py) | >=2.1 | arXiv API client for paper fetching |
 | [Pydantic](https://docs.pydantic.dev/) | >=2.0 | Data validation and schema definitions (Paper, TextChunk models) |
 | [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) | >=2.0 | Configuration management from environment variables and `.env` files |
 | [Jinja2](https://jinja.palletsprojects.com/) | >=3.1 | HTML and plaintext email templating |
@@ -444,7 +444,7 @@ src/digest_pipeline/
 ├── chunker.py           # Semantic text chunking via Chonkie
 ├── config.py            # Centralized settings via pydantic-settings
 ├── emailer.py           # HTML/plaintext email formatting and SMTP dispatch
-├── extractor.py         # PDF text extraction via PyMuPDF
+├── extractor.py         # PDF text extraction via pypdf
 ├── fetcher.py           # arXiv paper fetching with retry-based PDF download
 ├── github_trending.py   # Optional GitHub trending repository module
 ├── hf_fetcher.py        # HuggingFace Daily Papers fetching & deduplication
@@ -466,7 +466,7 @@ src/digest_pipeline/
 
 tests/
 ├── unit/                # Fast tests, no external dependencies
-├── integration/         # Tests with real local dependencies (ChromaDB, PyMuPDF)
+├── integration/         # Tests with real local dependencies (ChromaDB, pypdf)
 ├── e2e/                 # Full pipeline runs
 └── fixtures/            # Test PDFs and data
 ```
