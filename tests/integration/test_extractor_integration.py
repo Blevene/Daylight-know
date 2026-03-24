@@ -1,4 +1,4 @@
-"""Integration tests for extractor.py — real PyMuPDF.
+"""Integration tests for extractor.py — real pypdf.
 
 Test IDs: E-1, E-2, E-3
 """
@@ -11,7 +11,7 @@ from digest_pipeline.extractor import extract_text
 @pytest.mark.integration
 @pytest.mark.timeout(15)
 class TestExtractorIntegration:
-    """Tests that exercise real PyMuPDF on actual files."""
+    """Tests that exercise real pypdf on actual files."""
 
     def test_real_pdf_extraction(self, sample_pdf):
         """E-1: Real PDF → text extraction with parseable=True."""

@@ -84,10 +84,11 @@ class Settings(BaseSettings):
         """Return the best available interest profile, checking pipeline-wide then OpenAlex."""
         return self.interest_profile or self.openalex_interest_profile
 
-    # ── PDF download retry ──────────────────────────────────────
+    # ── PDF download ────────────────────────────────────────────
     pdf_download_max_retries: int = Field(default=3)
+    pdf_download_workers: int = Field(default=8)
 
 
 def get_settings() -> Settings:
-    """Return a cached ``Settings`` instance."""
+    """Return a fresh ``Settings`` instance from environment / ``.env``."""
     return Settings()

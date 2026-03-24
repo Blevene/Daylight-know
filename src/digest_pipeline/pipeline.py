@@ -2,9 +2,9 @@
 
 Ties together all modules to execute the full daily digest workflow:
 
-  1. Fetch papers from arXiv (24-hour window), HuggingFace, OpenAlex
+  1. Fetch papers from arXiv RSS feed, HuggingFace, OpenAlex
   2. Deduplicate across sources and filter previously-seen papers
-  3. Extract text from PDFs (PyMuPDF) — or use abstract for PDF-less papers
+  3. Extract text from PDFs (pypdf) — or use abstract for PDF-less papers
   4. Chunk text semantically (Chonkie) and store in ChromaDB (ALL papers)
   5. Rank stored papers by interest relevance → select top N for digest
   6. (Optional) Fetch GitHub trending repos
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import shutil
 import sys
 import tempfile
 from dataclasses import dataclass, field
@@ -92,6 +93,19 @@ def _build_analyses(
             )
         )
     return analyses
+
+
+def _cleanup_pdf_dirs(papers: list[Paper]) -> None:
+    """Remove temporary PDF directories created during fetching."""
+    cleaned: set[Path] = set()
+    for paper in papers:
+        if paper.pdf_path is not None:
+            parent = paper.pdf_path.parent
+            if parent not in cleaned and parent.name.startswith(("arxiv_pdfs_", "hf_pdfs_")):
+                shutil.rmtree(parent, ignore_errors=True)
+                cleaned.add(parent)
+    if cleaned:
+        logger.info("Cleaned up %d temporary PDF directory(s).", len(cleaned))
 
 
 def run(settings: Settings | None = None) -> None:
@@ -187,6 +201,9 @@ def run(settings: Settings | None = None) -> None:
 
         processed_papers.append(paper)
 
+    # Clean up downloaded PDFs — text has been extracted and stored.
+    _cleanup_pdf_dirs(papers)
+
     if not processed_papers:
         logger.warning("All papers were unparseable. Nothing to summarize.")
         return
@@ -225,7 +242,7 @@ def run(settings: Settings | None = None) -> None:
 
     processed_papers = digest_papers
 
-    # ── Step 5: Optional GitHub trending ────────────────────────
+    # ── Step 6: Optional GitHub trending ────────────────────────
     github_section = ""
     if settings.github_enabled:
         trending = fetch_trending(settings)
@@ -264,17 +281,24 @@ def run(settings: Settings | None = None) -> None:
     logger.info("Pipeline run complete. %d paper(s) in digest.", len(processed_papers))
 
 
-def _add_run_args(parser: argparse.ArgumentParser) -> None:
-    """Add run-mode arguments to a parser."""
+def _add_run_args(parser: argparse.ArgumentParser, *, is_subparser: bool = False) -> None:
+    """Add run-mode arguments to a parser.
+
+    When *is_subparser* is True, defaults use ``SUPPRESS`` so the
+    subparser doesn't clobber values set by the root parser
+    (e.g. ``digest-pipeline --dry-run run``).
+    """
+    default = argparse.SUPPRESS if is_subparser else None
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        default=None,
+        default=default,
         help="Print email to console instead of sending (overrides .env)",
     )
     parser.add_argument(
         "--topics",
         nargs="+",
+        default=default,
         help="arXiv category codes (e.g. cs.AI cs.LG)",
     )
 
@@ -282,7 +306,7 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
 def _handle_run(args: argparse.Namespace) -> None:
     """Execute the pipeline from CLI args."""
     settings = get_settings()
-    if args.dry_run is not None:
+    if args.dry_run:
         settings.dry_run = True
     if args.topics:
         settings.arxiv_topics = args.topics
@@ -306,7 +330,7 @@ def main() -> None:
 
     # ── run subcommand ───────────────────────────────────────────
     run_parser = subparsers.add_parser("run", help="Run the digest pipeline")
-    _add_run_args(run_parser)
+    _add_run_args(run_parser, is_subparser=True)
 
     # ── setup subcommand ─────────────────────────────────────────
     setup_parser = subparsers.add_parser("setup", help="Interactive setup wizard")

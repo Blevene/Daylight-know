@@ -34,12 +34,12 @@ def _make_settings(**overrides) -> Settings:
 class TestNetworkSmoke:
     """Tests that hit real external APIs. Skipped unless -m network is used."""
 
-    def test_fetch_papers_real_arxiv(self):
-        """F-1: Hit the live arXiv API for cs.DL with max_results=2."""
+    def test_fetch_papers_real_arxiv_rss(self):
+        """F-1: Hit the live arXiv RSS feed for cs.DL with max_results=2."""
         settings = _make_settings()
         papers = fetch_papers(settings)
 
-        # May return 0 if no papers in the 24-hour window for cs.DL
+        # May return 0 if no papers today for cs.DL
         assert isinstance(papers, list)
         for p in papers:
             assert isinstance(p, Paper)
