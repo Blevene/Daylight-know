@@ -2,6 +2,7 @@
 data/
 logs/
 .claude/
+.worktrees/
 CLAUDE.md
 **/CLAUDE.md
 
