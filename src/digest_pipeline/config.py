@@ -88,6 +88,16 @@ class Settings(BaseSettings):
     pdf_download_max_retries: int = Field(default=3)
     pdf_download_workers: int = Field(default=8)
 
+    # ── PDF archive (optional) ───────────────────────────────
+    pdf_archive_dir: str = Field(default="")
+
+    @property
+    def pdf_archive_db(self) -> Path | None:
+        """Path to the DuckDB archive index, or None if archiving is disabled."""
+        if not self.pdf_archive_dir:
+            return None
+        return Path(self.pdf_archive_dir) / "archive.duckdb"
+
 
 def get_settings() -> Settings:
     """Return a fresh ``Settings`` instance from environment / ``.env``."""
