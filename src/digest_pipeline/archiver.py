@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 from pathlib import Path
 
 import duckdb
+
+from digest_pipeline.config import Settings
 
 from digest_pipeline.fetcher import Paper
 
@@ -146,3 +149,66 @@ def _generate_markdown_index(
     lines.append(f"{len(papers)} papers archived.")
     lines.append("")
     return "\n".join(lines)
+
+
+def archive_papers(
+    papers: list[Paper],
+    date_str: str,
+    settings: Settings,
+) -> None:
+    """Archive fetched PDFs to a date-organized directory with DuckDB index.
+
+    No-ops if ``settings.pdf_archive_dir`` is empty (feature disabled).
+    Does NOT mutate ``Paper.pdf_path`` — temp dir cleanup proceeds normally.
+    """
+    if not settings.pdf_archive_dir:
+        return
+
+    archive_root = Path(settings.pdf_archive_dir)
+    day_dir = archive_root / date_str
+
+    try:
+        day_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        logger.error("Cannot create archive directory %s — skipping archive.", day_dir)
+        return
+
+    # Copy PDFs — track filenames for markdown and DB separately
+    # md_filenames: paper_id -> just the filename (for relative links in index.md)
+    # db_paths: paper_id -> date_str/filename (relative to archive root, for DuckDB)
+    md_filenames: dict[str, str] = {}
+    db_paths: dict[str, str] = {}
+    for paper in papers:
+        if paper.pdf_path is None or not paper.pdf_path.exists():
+            logger.debug("No source PDF for %s — skipping copy.", paper.paper_id)
+            continue
+
+        dest_name = _sanitize_filename(paper.title, paper.paper_id)
+        dest_path = day_dir / dest_name
+
+        try:
+            shutil.copy2(paper.pdf_path, dest_path)
+            md_filenames[paper.paper_id] = dest_name
+            db_paths[paper.paper_id] = f"{date_str}/{dest_name}"
+        except OSError:
+            logger.warning("Failed to copy PDF for %s — skipping.", paper.paper_id)
+
+    # Write markdown index (uses just filenames for relative links)
+    md_content = _generate_markdown_index(papers, date_str, md_filenames)
+    (day_dir / "index.md").write_text(md_content)
+
+    # Update DuckDB index (uses date-prefixed paths relative to archive root)
+    db_path = settings.pdf_archive_db
+    if db_path:
+        try:
+            con = _init_db(db_path)
+            _upsert_papers(con, papers, date_str, db_paths)
+            con.close()
+            logger.info(
+                "Archived %d PDFs, indexed %d papers for %s.",
+                len(db_paths),
+                len(papers),
+                date_str,
+            )
+        except Exception:
+            logger.warning("DuckDB write failed — PDFs were still copied.", exc_info=True)
