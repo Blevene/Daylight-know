@@ -201,6 +201,7 @@ generate one for "Mail", and use it as `SMTP_PASSWORD`.
 | `DRY_RUN` | Print digest to console instead of emailing | `true` |
 | `PDF_DOWNLOAD_MAX_RETRIES` | PDF download retry attempts | `3` |
 | `PDF_DOWNLOAD_WORKERS` | Parallel PDF download threads | `8` |
+| `PDF_ARCHIVE_DIR` | Directory to archive PDFs (empty = disabled) | — |
 
 #### Post-Processing
 
