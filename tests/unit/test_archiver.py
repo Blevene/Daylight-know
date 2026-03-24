@@ -1,6 +1,7 @@
 """Tests for the PDF archiver module."""
 
-from digest_pipeline.archiver import _sanitize_filename
+import duckdb
+from digest_pipeline.archiver import _init_db, _sanitize_filename, _upsert_papers
 
 
 def test_sanitize_basic_title():
@@ -96,3 +97,55 @@ def test_markdown_index_includes_url():
     filenames = {"2603.00001": "Test-Paper_2603.00001.pdf"}
     md = _generate_markdown_index(papers, "2026-03-24", filenames)
     assert "[arXiv](https://arxiv.org/abs/2603.00001)" in md
+
+
+def test_init_db_creates_table(tmp_path):
+    db_path = tmp_path / "test.duckdb"
+    con = _init_db(db_path)
+    tables = con.execute("SHOW TABLES").fetchall()
+    assert any("papers" in str(t) for t in tables)
+    con.close()
+
+
+def test_upsert_inserts_new_paper(tmp_path):
+    db_path = tmp_path / "test.duckdb"
+    con = _init_db(db_path)
+    papers = [_make_paper()]
+    filenames = {"2603.00001": "2026-03-24/Test-Paper_2603.00001.pdf"}
+    _upsert_papers(con, papers, "2026-03-24", filenames)
+
+    rows = con.execute("SELECT * FROM papers").fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == "2603.00001"  # paper_id
+    assert rows[0][1] == "Test Paper"  # title
+    con.close()
+
+
+def test_upsert_preserves_pdf_path_on_rerun(tmp_path):
+    db_path = tmp_path / "test.duckdb"
+    con = _init_db(db_path)
+    papers = [_make_paper()]
+
+    # First run: paper has a PDF
+    _upsert_papers(con, papers, "2026-03-24", {"2603.00001": "2026-03-24/Test.pdf"})
+    # Second run: paper has no PDF (re-run, temp file gone)
+    _upsert_papers(con, papers, "2026-03-24", {})
+
+    rows = con.execute("SELECT pdf_path FROM papers WHERE paper_id = '2603.00001'").fetchall()
+    assert rows[0][0] == "2026-03-24/Test.pdf"  # preserved, not overwritten with NULL
+    con.close()
+
+
+def test_upsert_updates_metadata_on_rerun(tmp_path):
+    db_path = tmp_path / "test.duckdb"
+    con = _init_db(db_path)
+
+    paper_v1 = _make_paper(title="Original Title")
+    _upsert_papers(con, [paper_v1], "2026-03-24", {"2603.00001": "2026-03-24/Test.pdf"})
+
+    paper_v2 = _make_paper(title="Updated Title")
+    _upsert_papers(con, [paper_v2], "2026-03-24", {"2603.00001": "2026-03-24/Test.pdf"})
+
+    rows = con.execute("SELECT title FROM papers WHERE paper_id = '2603.00001'").fetchall()
+    assert rows[0][0] == "Updated Title"
+    con.close()

@@ -6,9 +6,15 @@ searchable DuckDB index across all archived papers.
 
 from __future__ import annotations
 
+import logging
 import re
+from pathlib import Path
+
+import duckdb
 
 from digest_pipeline.fetcher import Paper
+
+logger = logging.getLogger(__name__)
 
 
 def _sanitize_filename(title: str, paper_id: str) -> str:
@@ -32,6 +38,84 @@ def _format_authors(authors: list[str]) -> str:
     if len(authors) > 2:
         return f"{authors[0]} et al."
     return ", ".join(authors)
+
+
+def _init_db(db_path: Path) -> duckdb.DuckDBPyConnection:
+    """Open (or create) the archive DuckDB and ensure the papers table exists."""
+    con = duckdb.connect(str(db_path))
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS papers (
+            paper_id       VARCHAR PRIMARY KEY,
+            title          VARCHAR,
+            authors        VARCHAR,
+            abstract       VARCHAR,
+            categories     VARCHAR,
+            source         VARCHAR,
+            url            VARCHAR,
+            pdf_path       VARCHAR,
+            published_date TIMESTAMP,
+            archived_date  VARCHAR
+        )
+    """)
+    return con
+
+
+def _upsert_papers(
+    con: duckdb.DuckDBPyConnection,
+    papers: list[Paper],
+    date_str: str,
+    filenames: dict[str, str],
+) -> None:
+    """Insert or update paper records, preserving existing pdf_path if no new PDF."""
+    for paper in papers:
+        new_pdf_path = filenames.get(paper.paper_id)
+
+        if new_pdf_path:
+            # New PDF available - full upsert
+            con.execute(
+                """INSERT OR REPLACE INTO papers
+                   (paper_id, title, authors, abstract, categories, source,
+                    url, pdf_path, published_date, archived_date)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                [
+                    paper.paper_id,
+                    paper.title,
+                    ", ".join(paper.authors),
+                    paper.abstract,
+                    ", ".join(paper.categories),
+                    paper.source,
+                    paper.url,
+                    new_pdf_path,
+                    paper.published,
+                    date_str,
+                ],
+            )
+        else:
+            # No new PDF - upsert metadata but preserve existing pdf_path
+            existing = con.execute(
+                "SELECT pdf_path FROM papers WHERE paper_id = ?",
+                [paper.paper_id],
+            ).fetchone()
+            existing_path = existing[0] if existing else None
+
+            con.execute(
+                """INSERT OR REPLACE INTO papers
+                   (paper_id, title, authors, abstract, categories, source,
+                    url, pdf_path, published_date, archived_date)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                [
+                    paper.paper_id,
+                    paper.title,
+                    ", ".join(paper.authors),
+                    paper.abstract,
+                    ", ".join(paper.categories),
+                    paper.source,
+                    paper.url,
+                    existing_path,
+                    paper.published,
+                    date_str,
+                ],
+            )
 
 
 def _generate_markdown_index(
