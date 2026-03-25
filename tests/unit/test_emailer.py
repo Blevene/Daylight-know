@@ -261,6 +261,66 @@ def test_dry_run_includes_implications_and_critiques(make_settings, capsys):
     assert "Limitation in Y." in captured.out
 
 
+def test_build_email_with_eli5(make_settings):
+    settings = make_settings()
+    papers = [
+        PaperAnalysis(
+            title="Test Paper",
+            url="https://arxiv.org/abs/2401.00001",
+            authors=["Alice"],
+            summary="Test summary",
+            eli5="Think of it like building with blocks.",
+            implications="Apply this to X.",
+            critique="Limitation in Y.",
+        ),
+    ]
+    msg = _build_email(papers, "2025-01-15", settings)
+    payloads = msg.get_payload()
+    html_body = payloads[1].get_payload(decode=True).decode()
+    plain_body = payloads[0].get_payload(decode=True).decode()
+    assert "ELI5" in html_body
+    assert "building with blocks" in html_body
+    assert "ELI5" in plain_body
+    assert "building with blocks" in plain_body
+
+
+def test_build_email_without_eli5(make_settings):
+    settings = make_settings()
+    papers = [
+        PaperAnalysis(
+            title="Test Paper",
+            url="https://arxiv.org/abs/2401.00001",
+            authors=["Alice"],
+            summary="Test summary",
+        ),
+    ]
+    msg = _build_email(papers, "2025-01-15", settings)
+    payloads = msg.get_payload()
+    html_body = payloads[1].get_payload(decode=True).decode()
+    assert ">ELI5<" not in html_body
+
+
+def test_build_email_eli5_appears_between_summary_and_implications(make_settings):
+    settings = make_settings()
+    papers = [
+        PaperAnalysis(
+            title="Test Paper",
+            url="https://arxiv.org/abs/2401.00001",
+            authors=["Alice"],
+            summary="Test summary",
+            eli5="Simple explanation here.",
+            implications="Apply this to X.",
+        ),
+    ]
+    msg = _build_email(papers, "2025-01-15", settings)
+    payloads = msg.get_payload()
+    html_body = payloads[1].get_payload(decode=True).decode()
+    summary_pos = html_body.index("Summary")
+    eli5_pos = html_body.index("ELI5")
+    implications_pos = html_body.index("Practical Implications")
+    assert summary_pos < eli5_pos < implications_pos
+
+
 @patch("digest_pipeline.emailer.smtplib.SMTP")
 def test_real_send(mock_smtp_cls, make_settings):
     settings = make_settings(dry_run=False)
