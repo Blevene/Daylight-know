@@ -9,7 +9,7 @@ Ties together all modules to execute the full daily digest workflow:
   5. Rank stored papers by interest relevance → select top N for digest
   6. (Optional) Fetch GitHub trending repos
   7. Summarize via LLM (per-paper JSON)
-  8. Post-process: implications & critiques (per-paper JSON)
+  8. Post-process: ELI5, implications & critiques (per-paper JSON)
   9. Assemble per-paper analyses and send email digest
 """
 
@@ -36,7 +36,7 @@ from digest_pipeline.hf_fetcher import (
     normalize_arxiv_id,
     reconcile_hf_papers,
 )
-from digest_pipeline.postprocessor import extract_implications, generate_critiques
+from digest_pipeline.postprocessor import extract_implications, generate_critiques, generate_eli5
 from digest_pipeline.openalex_fetcher import fetch_openalex_papers
 from digest_pipeline.archiver import archive_papers
 from digest_pipeline.ranker import rank_papers
@@ -59,6 +59,7 @@ class PaperAnalysis:
     upvotes: int = 0
     fields_of_study: list[str] = field(default_factory=list)
     summary: str = ""
+    eli5: str = ""
     implications: str = ""
     critique: str = ""
 
@@ -68,8 +69,12 @@ def _build_analyses(
     summaries: dict[str, str],
     implications: dict[str, str],
     critiques: dict[str, str],
+    *,
+    eli5: dict[str, str] | None = None,
 ) -> list[PaperAnalysis]:
     """Zip LLM results into per-paper PaperAnalysis objects."""
+    if eli5 is None:
+        eli5 = {}
     analyses: list[PaperAnalysis] = []
     for i, paper in enumerate(papers, 1):
         key = f"paper_{i}"
@@ -79,6 +84,8 @@ def _build_analyses(
             logger.warning("Missing implications for %s (%s).", key, paper.title)
         if critiques and key not in critiques:
             logger.warning("Missing critique for %s (%s).", key, paper.title)
+        if eli5 and key not in eli5:
+            logger.warning("Missing ELI5 for %s (%s).", key, paper.title)
         analyses.append(
             PaperAnalysis(
                 title=paper.title,
@@ -89,6 +96,7 @@ def _build_analyses(
                 upvotes=paper.upvotes,
                 fields_of_study=paper.fields_of_study,
                 summary=summaries.get(key, ""),
+                eli5=eli5.get(key, ""),
                 implications=implications.get(key, ""),
                 critique=critiques.get(key, ""),
             )
@@ -269,8 +277,16 @@ def run(settings: Settings | None = None) -> None:
                 "Critique generation returned no results for %d papers.", len(processed_papers)
             )
 
+    eli5_results: dict[str, str] = {}
+    if settings.postprocessing_eli5:
+        eli5_results = generate_eli5(processed_papers, settings)
+        if not eli5_results:
+            logger.error(
+                "ELI5 generation returned no results for %d papers.", len(processed_papers)
+            )
+
     # ── Step 8: Assemble & send ─────────────────────────────────
-    analyses = _build_analyses(processed_papers, summaries, implications, critiques)
+    analyses = _build_analyses(processed_papers, summaries, implications, critiques, eli5=eli5_results)
 
     send_digest(
         analyses,

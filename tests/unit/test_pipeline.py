@@ -87,6 +87,7 @@ def test_run_no_papers(mock_fetch, make_settings):
 @patch("digest_pipeline.pipeline.save_seen")
 @patch("digest_pipeline.pipeline.load_seen", return_value={})
 @patch("digest_pipeline.pipeline.send_digest")
+@patch("digest_pipeline.pipeline.generate_eli5", return_value={"paper_1": "Simple explanation"})
 @patch("digest_pipeline.pipeline.generate_critiques", return_value={"paper_1": "Critiques text"})
 @patch(
     "digest_pipeline.pipeline.extract_implications", return_value={"paper_1": "Implications text"}
@@ -107,6 +108,7 @@ def test_run_full_pipeline(
     mock_summarize,
     mock_implications,
     mock_critiques,
+    mock_eli5,
     mock_email,
     mock_load_seen,
     mock_save_seen,
@@ -125,6 +127,7 @@ def test_run_full_pipeline(
     mock_summarize.assert_called_once()
     mock_implications.assert_called_once()
     mock_critiques.assert_called_once()
+    mock_eli5.assert_called_once()
     mock_email.assert_called_once()
     # Verify PaperAnalysis objects are passed to send_digest
     call_args = mock_email.call_args
@@ -134,6 +137,7 @@ def test_run_full_pipeline(
     assert analyses[0].summary == "Summary"
     assert analyses[0].implications == "Implications text"
     assert analyses[0].critique == "Critiques text"
+    assert analyses[0].eli5 == "Simple explanation"
     assert analyses[0].title == "Test Paper"
     assert analyses[0].url == "https://arxiv.org/abs/2401.00001"
 
@@ -141,6 +145,7 @@ def test_run_full_pipeline(
 @patch("digest_pipeline.pipeline.save_seen")
 @patch("digest_pipeline.pipeline.load_seen", return_value={})
 @patch("digest_pipeline.pipeline.send_digest")
+@patch("digest_pipeline.pipeline.generate_eli5")
 @patch("digest_pipeline.pipeline.generate_critiques")
 @patch("digest_pipeline.pipeline.extract_implications")
 @patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "Summary"})
@@ -159,6 +164,7 @@ def test_run_postprocessing_disabled(
     mock_summarize,
     mock_implications,
     mock_critiques,
+    mock_eli5,
     mock_email,
     mock_load_seen,
     mock_save_seen,
@@ -169,16 +175,19 @@ def test_run_postprocessing_disabled(
     settings = make_settings(
         postprocessing_implications=False,
         postprocessing_critiques=False,
+        postprocessing_eli5=False,
     )
 
     run(settings)
 
     mock_implications.assert_not_called()
     mock_critiques.assert_not_called()
+    mock_eli5.assert_not_called()
     call_args = mock_email.call_args
     analyses = call_args.args[0]
     assert analyses[0].implications == ""
     assert analyses[0].critique == ""
+    assert analyses[0].eli5 == ""
 
 
 def test_build_analyses_warns_on_missing_keys(caplog):
@@ -224,6 +233,7 @@ def test_run_unparseable_paper(
 @patch("digest_pipeline.pipeline.save_seen")
 @patch("digest_pipeline.pipeline.load_seen", return_value={})
 @patch("digest_pipeline.pipeline.send_digest")
+@patch("digest_pipeline.pipeline.generate_eli5", return_value={})
 @patch("digest_pipeline.pipeline.generate_critiques", return_value={})
 @patch(
     "digest_pipeline.pipeline.extract_implications", return_value={"paper_1": "Implications text"}
@@ -244,6 +254,7 @@ def test_run_logs_error_when_critiques_empty(
     mock_summarize,
     mock_implications,
     mock_critiques,
+    mock_eli5,
     mock_email,
     mock_load_seen,
     mock_save_seen,
@@ -268,6 +279,7 @@ def test_run_logs_error_when_critiques_empty(
 @patch("digest_pipeline.pipeline.save_seen")
 @patch("digest_pipeline.pipeline.load_seen", return_value={})
 @patch("digest_pipeline.pipeline.send_digest")
+@patch("digest_pipeline.pipeline.generate_eli5", return_value={})
 @patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "Summary"})
 @patch("digest_pipeline.pipeline.store_chunks")
 @patch("digest_pipeline.pipeline.chunk_text", return_value=[])
@@ -281,6 +293,7 @@ def test_pipeline_calls_ranker_for_openalex(
     mock_chunk,
     mock_store,
     mock_summarize,
+    mock_eli5,
     mock_send,
     mock_load_seen,
     mock_save_seen,
@@ -298,6 +311,7 @@ def test_pipeline_calls_ranker_for_openalex(
         openalex_interest_profile="test",
         postprocessing_implications=False,
         postprocessing_critiques=False,
+        postprocessing_eli5=False,
     )
     run(settings)
 
@@ -312,6 +326,7 @@ def test_pipeline_calls_ranker_for_openalex(
 @patch("digest_pipeline.pipeline.send_digest")
 @patch("digest_pipeline.pipeline.store_chunks")
 @patch("digest_pipeline.pipeline.chunk_text", return_value=["chunk1"])
+@patch("digest_pipeline.pipeline.generate_eli5", return_value={})
 @patch("digest_pipeline.pipeline.generate_critiques", return_value={})
 @patch("digest_pipeline.pipeline.extract_implications", return_value={})
 @patch(
@@ -325,6 +340,7 @@ def test_arxiv_papers_ranked_when_interest_configured(
     mock_summarize,
     mock_impl,
     mock_critiques,
+    mock_eli5,
     mock_chunk,
     mock_store,
     mock_send,
@@ -347,6 +363,7 @@ def test_arxiv_papers_ranked_when_interest_configured(
         arxiv_fetch_pool=50,
         postprocessing_implications=False,
         postprocessing_critiques=False,
+        postprocessing_eli5=False,
     )
     run(settings)
 
@@ -354,3 +371,61 @@ def test_arxiv_papers_ranked_when_interest_configured(
     call_args = mock_rank.call_args
     assert len(call_args[0][0]) == 5  # all papers passed to ranker
     assert call_args[1]["max_results"] == 2
+
+
+def test_build_analyses_with_eli5():
+    papers = [
+        _make_paper(title="Paper 1", url="http://1", authors=["A"]),
+    ]
+    summaries = {"paper_1": "Sum 1"}
+    implications = {"paper_1": "Impl 1"}
+    critiques = {"paper_1": "Crit 1"}
+    eli5 = {"paper_1": "Think of it like..."}
+
+    analyses = _build_analyses(papers, summaries, implications, critiques, eli5=eli5)
+
+    assert analyses[0].eli5 == "Think of it like..."
+
+
+def test_build_analyses_warns_on_missing_eli5(caplog):
+    papers = [
+        _make_paper(title="Paper 1", url="http://1", authors=["A"]),
+    ]
+    summaries = {"paper_1": "Sum 1"}
+
+    with caplog.at_level(logging.WARNING, logger="digest_pipeline.pipeline"):
+        _build_analyses(papers, summaries, {}, {}, eli5={"paper_99": "stale"})
+
+    warnings = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("Missing ELI5" in w and "paper_1" in w for w in warnings)
+
+
+@patch("digest_pipeline.pipeline.save_seen")
+@patch("digest_pipeline.pipeline.load_seen", return_value={})
+@patch("digest_pipeline.pipeline.send_digest")
+@patch("digest_pipeline.pipeline.generate_eli5", return_value={})
+@patch("digest_pipeline.pipeline.generate_critiques", return_value={"paper_1": "Crit"})
+@patch("digest_pipeline.pipeline.extract_implications", return_value={"paper_1": "Impl"})
+@patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "Summary"})
+@patch("digest_pipeline.pipeline.store_chunks", return_value=[])
+@patch("digest_pipeline.pipeline.chunk_text", return_value=[])
+@patch(
+    "digest_pipeline.pipeline.extract_text",
+    return_value=ExtractionResult(paper_id="2401.00001", text="content", parseable=True),
+)
+@patch("digest_pipeline.pipeline.fetch_papers")
+def test_run_logs_error_when_eli5_empty(
+    mock_fetch, mock_extract, mock_chunk, mock_store,
+    mock_summarize, mock_implications, mock_critiques,
+    mock_eli5, mock_email, mock_load_seen, mock_save_seen,
+    caplog, make_settings,
+):
+    mock_fetch.return_value = [_make_paper()]
+    with caplog.at_level(logging.ERROR, logger="digest_pipeline.pipeline"):
+        run(make_settings())
+
+    assert any(
+        "ELI5 generation returned no results" in r.message and r.levelno == logging.ERROR
+        for r in caplog.records
+    )
+    mock_email.assert_called_once()
