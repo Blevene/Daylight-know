@@ -391,6 +391,11 @@ def _collect_optional_settings() -> dict[str, str]:
     if archive_dir:
         config["PDF_ARCHIVE_DIR"] = archive_dir
 
+    config["PIPELINE_INGEST_WORKERS"] = _prompt("Parallel ingest workers", "4")
+    config["PIPELINE_POSTPROCESS_PARALLEL"] = (
+        "true" if _prompt_bool("Parallelize post-processing LLM calls?", default=True) else "false"
+    )
+
     if _prompt_bool("Enable HuggingFace Daily Papers?", default=False):
         config["HUGGINGFACE_ENABLED"] = "true"
         config["HUGGINGFACE_TOKEN"] = _prompt("HuggingFace token (optional, press Enter to skip)")
@@ -534,6 +539,10 @@ def _write_env_file(config: dict[str, str], path: Path) -> None:
         (
             "PDF Download",
             ["PDF_DOWNLOAD_MAX_RETRIES", "PDF_DOWNLOAD_WORKERS"],
+        ),
+        (
+            "Pipeline Performance",
+            ["PIPELINE_INGEST_WORKERS", "PIPELINE_POSTPROCESS_PARALLEL"],
         ),
         (
             "PDF Archive",

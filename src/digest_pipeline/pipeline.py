@@ -5,11 +5,11 @@ Ties together all modules to execute the full daily digest workflow:
   1. Fetch papers from arXiv RSS feed, HuggingFace, OpenAlex
   2. Deduplicate across sources and filter previously-seen papers
   3. Extract text from PDFs (pypdf) — or use abstract for PDF-less papers
-  4. Chunk text semantically (Chonkie) and store in ChromaDB (ALL papers)
+  4. Chunk text semantically (Chonkie) and store in ChromaDB (ALL papers, parallel)
   5. Rank stored papers by interest relevance → select top N for digest
   6. (Optional) Fetch GitHub trending repos
   7. Summarize via LLM (per-paper JSON)
-  8. Post-process: ELI5, implications & critiques (per-paper JSON)
+  8. Post-process: ELI5, implications & critiques (per-paper JSON, parallel)
   9. Assemble per-paper analyses and send email digest
 """
 
