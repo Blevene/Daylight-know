@@ -63,11 +63,6 @@ class Settings(BaseSettings):
     openalex_interest_keywords: list[str] = Field(default_factory=list)
     openalex_fetch_pool: int = Field(default=100)
 
-    # ── GitHub (optional) ───────────────────────────────────────
-    github_enabled: bool = Field(default=False)
-    github_languages: list[str] = Field(default=["python"])
-    github_top_n: int = Field(default=5)
-
     # ── Post-processing (optional) ──────────────────────────────
     postprocessing_implications: bool = Field(default=True)
     postprocessing_critiques: bool = Field(default=True)

@@ -9,7 +9,6 @@ from unittest.mock import patch
 import pytest
 
 from digest_pipeline.pipeline import run
-from digest_pipeline.github_trending import TrendingRepo
 
 
 @pytest.mark.e2e
@@ -70,28 +69,6 @@ class TestPipelineE2E:
         with patch("digest_pipeline.pipeline.get_settings", return_value=e2e_settings):
             with patch("digest_pipeline.pipeline.fetch_papers", return_value=[paper]):
                 main()
-
-        captured = capsys.readouterr()
-        assert "E2E stub summary" in captured.out
-
-    def test_github_enabled(self, e2e_settings, make_paper, sample_pdf, capsys):
-        """PL-5: GitHub-enabled pipeline includes GitHub section in output."""
-        e2e_settings.github_enabled = True
-        paper = make_paper(pdf_path=sample_pdf)
-
-        mock_repos = [
-            TrendingRepo(
-                name="test/repo",
-                description="A test repo",
-                url="https://github.com/test/repo",
-                stars=100,
-                language="Python",
-            )
-        ]
-
-        with patch("digest_pipeline.pipeline.fetch_papers", return_value=[paper]):
-            with patch("digest_pipeline.pipeline.fetch_trending", return_value=mock_repos):
-                run(e2e_settings)
 
         captured = capsys.readouterr()
         assert "E2E stub summary" in captured.out

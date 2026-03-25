@@ -427,13 +427,6 @@ def _collect_optional_settings() -> dict[str, str]:
     else:
         config["OPENALEX_ENABLED"] = "false"
 
-    if _prompt_bool("Enable GitHub trending integration?", default=False):
-        config["GITHUB_ENABLED"] = "true"
-        config["GITHUB_LANGUAGES"] = _prompt("GitHub languages (comma-separated)", "python,rust")
-        config["GITHUB_TOP_N"] = _prompt("GitHub top N repos", "5")
-    else:
-        config["GITHUB_ENABLED"] = "false"
-
     return config
 
 
@@ -566,10 +559,6 @@ def _write_env_file(config: dict[str, str], path: Path) -> None:
                 "OPENALEX_QUERY",
                 "OPENALEX_FIELDS",
             ],
-        ),
-        (
-            "Optional: GitHub Trending",
-            ["GITHUB_ENABLED", "GITHUB_LANGUAGES", "GITHUB_TOP_N"],
         ),
     ]
 

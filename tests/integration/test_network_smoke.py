@@ -11,7 +11,6 @@ import pytest
 
 from digest_pipeline.config import Settings
 from digest_pipeline.fetcher import Paper, download_pdf, fetch_papers
-from digest_pipeline.github_trending import TrendingRepo, fetch_trending
 
 
 def _make_settings(**overrides) -> Settings:
@@ -85,13 +84,3 @@ class TestNetworkSmoke:
             assert p.abstract
             assert p.title
 
-    def test_fetch_trending_real_github(self):
-        """G-1: Hit the live GitHub Search API and verify TrendingRepo objects."""
-        settings = _make_settings(github_enabled=True)
-        repos = fetch_trending(settings)
-
-        assert isinstance(repos, list)
-        for r in repos:
-            assert isinstance(r, TrendingRepo)
-            assert r.name
-            assert r.url.startswith("https://github.com/")

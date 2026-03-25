@@ -26,7 +26,6 @@ SYSTEM_PROMPT = load_prompt("summarizer")
 def summarize(
     papers: list[Paper],
     settings: Settings,
-    github_section: str = "",
 ) -> dict[str, str]:
     """Generate per-paper LLM summaries.
 
@@ -40,5 +39,4 @@ def summarize(
         settings,
         label="summarization",
         schema_name="paper_summaries",
-        github_section=github_section,
     )

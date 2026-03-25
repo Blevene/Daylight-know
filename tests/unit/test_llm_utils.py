@@ -160,11 +160,6 @@ class TestBuildUserPrompt:
         assert "Fields of Study:" not in prompt
         assert "Community Upvotes:" not in prompt
 
-    def test_github_section(self, make_paper):
-        prompt = build_user_prompt([make_paper()], github_section="Repo1\nRepo2")
-        assert "Trending GitHub Repositories" in prompt
-        assert "Repo1" in prompt
-
 
 class TestLlmCall:
     @patch("digest_pipeline.llm_utils.litellm.completion")

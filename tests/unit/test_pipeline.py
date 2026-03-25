@@ -542,7 +542,7 @@ def test_ingest_papers_fail_fast(mock_chunk, mock_get_coll, mock_process, caplog
 def test_postprocess_parallel(mock_sum, mock_impl, mock_crit, mock_eli5, make_paper, make_settings):
     papers = [make_paper()]
     settings = make_settings(pipeline_postprocess_parallel=True)
-    summaries, implications, critiques, eli5 = _postprocess(papers, settings, "")
+    summaries, implications, critiques, eli5 = _postprocess(papers, settings)
     assert summaries == {"paper_1": "Sum"}
     assert implications == {"paper_1": "Impl"}
     assert critiques == {"paper_1": "Crit"}
@@ -556,7 +556,7 @@ def test_postprocess_parallel(mock_sum, mock_impl, mock_crit, mock_eli5, make_pa
 def test_postprocess_sequential(mock_sum, mock_impl, mock_crit, mock_eli5, make_paper, make_settings):
     papers = [make_paper()]
     settings = make_settings(pipeline_postprocess_parallel=False)
-    summaries, implications, critiques, eli5 = _postprocess(papers, settings, "")
+    summaries, implications, critiques, eli5 = _postprocess(papers, settings)
     assert summaries == {"paper_1": "Sum"}
     assert implications == {"paper_1": "Impl"}
 
@@ -572,7 +572,7 @@ def test_postprocess_skips_disabled(mock_sum, mock_impl, mock_crit, mock_eli5, m
         postprocessing_critiques=False,
         postprocessing_eli5=False,
     )
-    summaries, implications, critiques, eli5 = _postprocess(papers, settings, "")
+    summaries, implications, critiques, eli5 = _postprocess(papers, settings)
     mock_impl.assert_not_called()
     mock_crit.assert_not_called()
     mock_eli5.assert_not_called()
@@ -589,7 +589,7 @@ def test_postprocess_partial_failure(mock_sum, mock_impl, mock_crit, mock_eli5, 
     """One post-processor failing should not lose the others' results."""
     papers = [make_paper()]
     settings = make_settings(pipeline_postprocess_parallel=True)
-    summaries, implications, critiques, eli5 = _postprocess(papers, settings, "")
+    summaries, implications, critiques, eli5 = _postprocess(papers, settings)
     assert implications == {"paper_1": "Impl"}
     assert critiques == {"paper_1": "Crit"}
     assert eli5 == {}  # failed, returns empty

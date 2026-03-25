@@ -26,19 +26,6 @@ def test_summarize_success(mock_completion, make_paper, make_settings):
     assert schema["additionalProperties"] is False
 
 
-@patch("digest_pipeline.llm_utils.litellm.completion")
-def test_summarize_with_github_section(mock_completion, make_paper, make_settings):
-    mock_choice = MagicMock()
-    mock_choice.message.content = json.dumps({"paper_1": "Summary."})
-    mock_completion.return_value = MagicMock(choices=[mock_choice])
-
-    summarize([make_paper()], make_settings(), github_section="Repo1\nRepo2")
-
-    call_kwargs = mock_completion.call_args
-    user_msg = call_kwargs.kwargs["messages"][1]["content"]
-    assert "Trending GitHub Repositories" in user_msg
-
-
 @patch("digest_pipeline.llm_utils.time.sleep")
 @patch("digest_pipeline.llm_utils.litellm.completion")
 def test_summarize_empty_content_returns_empty_dict(

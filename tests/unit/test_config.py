@@ -14,7 +14,6 @@ def test_defaults():
     )
     assert s.arxiv_topics == ["cs.AI", "cs.LG"]
     assert s.dry_run is True
-    assert s.github_enabled is False
     assert s.pdf_download_max_retries == 3
 
 

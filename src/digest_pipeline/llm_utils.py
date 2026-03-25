@@ -85,8 +85,8 @@ def build_response_format(name: str, num_papers: int) -> dict[str, Any]:
     }
 
 
-def build_user_prompt(papers: list[Paper], github_section: str = "") -> str:
-    """Format papers (and optional GitHub section) into the LLM user message."""
+def build_user_prompt(papers: list[Paper]) -> str:
+    """Format papers into the LLM user message."""
     parts: list[str] = []
     for i, p in enumerate(papers, 1):
         lines = [
@@ -103,10 +103,7 @@ def build_user_prompt(papers: list[Paper], github_section: str = "") -> str:
         lines.append(f"**URL:** {p.url}\n\n")
         lines.append(f"{p.abstract}\n")
         parts.append("".join(lines))
-    prompt = "\n---\n".join(parts)
-    if github_section:
-        prompt += f"\n\n---\n## Trending GitHub Repositories\n{github_section}"
-    return prompt
+    return "\n---\n".join(parts)
 
 
 def _llm_call_single(
@@ -115,7 +112,6 @@ def _llm_call_single(
     settings: Settings,
     label: str,
     schema_name: str = "paper_analysis",
-    github_section: str = "",
 ) -> dict[str, str]:
     """Perform a single LLM completion for one batch of papers.
 
@@ -123,7 +119,7 @@ def _llm_call_single(
     Enforces ``settings.llm_max_tokens`` and retries with exponential
     backoff on rate-limit errors and malformed responses.
     """
-    user_prompt = build_user_prompt(papers, github_section)
+    user_prompt = build_user_prompt(papers)
     response_format = build_response_format(schema_name, len(papers))
     expected_keys = {f"paper_{i}" for i in range(1, len(papers) + 1)}
 
@@ -227,7 +223,6 @@ def llm_call(
     settings: Settings,
     label: str,
     schema_name: str = "paper_analysis",
-    github_section: str = "",
 ) -> dict[str, str]:
     """Perform LLM completion with automatic batching, structured output, and retry.
 
@@ -236,17 +231,15 @@ def llm_call(
     globally consistent ``paper_N`` keys.
     """
     if len(papers) <= LLM_BATCH_SIZE:
-        return _llm_call_single(papers, system_prompt, settings, label, schema_name, github_section)
+        return _llm_call_single(papers, system_prompt, settings, label, schema_name)
 
     merged: dict[str, str] = {}
     for batch_start in range(0, len(papers), LLM_BATCH_SIZE):
         batch = papers[batch_start : batch_start + LLM_BATCH_SIZE]
         batch_num = batch_start // LLM_BATCH_SIZE + 1
         batch_label = f"{label} batch {batch_num}"
-        # Only first batch gets github_section to avoid duplication
-        gh = github_section if batch_start == 0 else ""
         batch_result = _llm_call_single(
-            batch, system_prompt, settings, batch_label, schema_name, gh
+            batch, system_prompt, settings, batch_label, schema_name
         )
         # Re-key from batch-local paper_N to global paper_N
         for local_key, value in batch_result.items():

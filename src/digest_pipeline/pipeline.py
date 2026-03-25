@@ -7,10 +7,9 @@ Ties together all modules to execute the full daily digest workflow:
   3. Extract text from PDFs (pypdf) — or use abstract for PDF-less papers
   4. Chunk text semantically (Chonkie) and store in ChromaDB (ALL papers, parallel)
   5. Rank stored papers by interest relevance → select top N for digest
-  6. (Optional) Fetch GitHub trending repos
-  7. Summarize via LLM (per-paper JSON)
-  8. Post-process: ELI5, implications & critiques (per-paper JSON, parallel)
-  9. Assemble per-paper analyses and send email digest
+  6. Summarize via LLM (per-paper JSON)
+  7. Post-process: ELI5, implications & critiques (per-paper JSON, parallel)
+  8. Assemble per-paper analyses and send email digest
 """
 
 from __future__ import annotations
@@ -32,7 +31,6 @@ from digest_pipeline.config import Settings, get_settings
 from digest_pipeline.emailer import send_digest
 from digest_pipeline.extractor import extract_text
 from digest_pipeline.fetcher import Paper, download_pdf, fetch_papers
-from digest_pipeline.github_trending import fetch_trending, format_for_prompt
 from digest_pipeline.hf_fetcher import (
     HFDailyPaper,
     fetch_hf_daily,
@@ -212,13 +210,12 @@ def _ingest_papers(papers: list[Paper], settings: Settings) -> list[Paper]:
 def _postprocess(
     papers: list[Paper],
     settings: Settings,
-    github_section: str,
 ) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
     """Run summarization then post-processing (parallel or sequential).
 
     Returns (summaries, implications, critiques, eli5).
     """
-    summaries = summarize(papers, settings, github_section=github_section)
+    summaries = summarize(papers, settings)
 
     implications: dict[str, str] = {}
     critiques: dict[str, str] = {}
@@ -385,15 +382,9 @@ def run(settings: Settings | None = None) -> None:
 
     processed_papers = digest_papers
 
-    # ── Step 6: Optional GitHub trending ────────────────────────
-    github_section = ""
-    if settings.github_enabled:
-        trending = fetch_trending(settings)
-        github_section = format_for_prompt(trending)
-
-    # ── Step 7: Post-processing (parallel or sequential) ─────────
+    # ── Step 6: Post-processing (parallel or sequential) ──────
     summaries, implications, critiques, eli5_results = _postprocess(
-        processed_papers, settings, github_section
+        processed_papers, settings
     )
 
     # ── Step 8: Assemble & send ─────────────────────────────────
