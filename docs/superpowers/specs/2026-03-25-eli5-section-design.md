@@ -19,6 +19,8 @@ System prompt instructing the LLM to re-explain each paper in plain language. No
 
 ### 2. New function — `postprocessor.py`
 
+Update the module docstring (line 1) to include ELI5 alongside "practical implications and critiques."
+
 ```python
 ELI5_SYSTEM_PROMPT = load_prompt("eli5")
 
@@ -45,10 +47,11 @@ Add `eli5: str = ""` field to `PaperAnalysis` dataclass, after `summary` and bef
 
 - Import `generate_eli5` from `postprocessor`
 - Call `generate_eli5()` gated by `settings.postprocessing_eli5`, alongside implications/critiques
-- Update `_build_analyses()` signature to accept `eli5: dict[str, str]` parameter
+- Update `_build_analyses()` signature to accept `eli5: dict[str, str]` as a keyword argument (not positional) to avoid breaking the existing call pattern
 - Add missing-key warning for eli5 (matching the pattern on lines 78-81 for implications/critiques)
 - Pass `eli5=eli5.get(key, "")` in the `PaperAnalysis` constructor
 - Update the module docstring (line 8) to include ELI5 alongside implications & critiques
+- Add `logger.error()` when `generate_eli5()` returns empty results, matching the critiques pattern at pipeline.py lines 267-270
 
 ### 6. Email templates — `emailer.py`
 
@@ -82,7 +85,9 @@ Add ELI5 toggle prompt following the pattern of existing post-processing toggles
 
 ### 9. Tests
 
-Unit tests for `generate_eli5()` alongside existing postprocessor tests in `tests/unit/test_postprocessor.py`. Mirror all existing test cases: success path, max-tokens passthrough, empty content handling, malformed JSON, and schema key validation.
+- **`tests/unit/test_postprocessor.py`**: Unit tests for `generate_eli5()` mirroring all existing test cases: success path, max-tokens passthrough, empty content handling, malformed JSON, and schema key validation.
+- **`tests/unit/test_pipeline.py`**: Add coverage for the new `eli5` field in `PaperAnalysis` and the updated `_build_analyses()` signature (ensure ELI5 dict is wired correctly, missing-key warning fires).
+- **`tests/unit/test_emailer.py`**: Verify the ELI5 section renders in both HTML and plain text templates when `eli5` content is present, and is omitted when empty.
 
 ## Section Order in Email
 
