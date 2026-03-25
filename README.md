@@ -24,8 +24,7 @@ OpenAlex API ──────────┤                              [ful
                                                               v
                                                      Top N for Digest
                                                               |
-                              GitHub Trending ──>             v
-                              (optional)          LLM Summarization (litellm)
+                                                    LLM Summarization (litellm)
                                                               |
                                                               v
                                              Post-Processing (ELI5, Implications & Critiques)
@@ -57,16 +56,14 @@ OpenAlex API ──────────┤                              [ful
    by keyword match + LLM relevance and the top N per source are selected
    for the digest (e.g., top 50 arXiv, top 20 OpenAlex). Papers that don't
    make the digest cut are still in the vector store from step 4.
-6. **GitHub Trending** *(optional)* — Fetches recently-created trending
-   repositories from GitHub and appends them to the LLM prompt.
-7. **Summarize** — Sends paper text to an LLM via litellm, producing
+6. **Summarize** — Sends paper text to an LLM via litellm, producing
    per-paper structured summaries. Supports OpenAI, Anthropic, Google,
    Cohere, Ollama, Azure, and 100+ other providers.
-8. **Post-process** — Optionally generates ELI5 (plain-language explanations),
+7. **Post-process** — Optionally generates ELI5 (plain-language explanations),
    practical implications (who benefits, how to apply), and structured
    critiques (strengths, weaknesses, open questions) via separate LLM calls.
    Enabled post-processors run in parallel by default.
-9. **Email** — Delivers the digest as a styled HTML + plaintext email via
+8. **Email** — Delivers the digest as a styled HTML + plaintext email via
    SMTP with STARTTLS, or prints to console in dry-run mode.
 
 ### What You Get
@@ -110,7 +107,7 @@ The wizard will:
 2. Configure your **LLM provider** and optionally test the connection
 3. Configure **SMTP email** settings and optionally test delivery
 4. Set up **ChromaDB** storage location
-5. Toggle **optional features** (GitHub trending, implications, critiques)
+5. Toggle **optional features** (ELI5, implications, critiques)
 6. Write a complete `.env` file (with backup if one exists)
 
 ### Option B: Manual Configuration
@@ -292,14 +289,6 @@ ARXIV_FETCH_POOL=200
 OPENALEX_FETCH_POOL=100
 ```
 
-#### GitHub Trending (Optional)
-
-| Variable | Description | Default |
-|---|---|---|
-| `GITHUB_ENABLED` | Include trending repos in digest | `false` |
-| `GITHUB_LANGUAGES` | Comma-separated languages to track | `python` |
-| `GITHUB_TOP_N` | Number of trending repos | `5` |
-
 ## Usage
 
 ### Running the Pipeline
@@ -432,7 +421,7 @@ journalctl -u digest-pipeline.service  # view logs
 | [Jinja2](https://jinja.palletsprojects.com/) | >=3.1 | HTML and plaintext email templating |
 | [Mistune](https://mistune.lepture.com/) | >=3.0 | Markdown-to-HTML conversion for email rendering |
 | [Rich](https://rich.readthedocs.io/) | >=13.0 | Interactive setup wizard TUI (console, tables, panels, prompts) |
-| [Requests](https://requests.readthedocs.io/) | >=2.31 | HTTP client for HuggingFace, OpenAlex, and GitHub APIs |
+| [Requests](https://requests.readthedocs.io/) | >=2.31 | HTTP client for HuggingFace and OpenAlex APIs |
 | [python-dotenv](https://github.com/theskumar/python-dotenv) | >=1.0 | `.env` file loading |
 
 ### Dev & Testing
@@ -457,7 +446,6 @@ src/digest_pipeline/
 ├── emailer.py           # HTML/plaintext email formatting and SMTP dispatch
 ├── extractor.py         # PDF text extraction via pypdf
 ├── fetcher.py           # arXiv paper fetching with retry-based PDF download
-├── github_trending.py   # Optional GitHub trending repository module
 ├── hf_fetcher.py        # HuggingFace Daily Papers fetching & deduplication
 ├── llm_utils.py         # Shared LLM call utilities (backoff, structured output)
 ├── openalex_fetcher.py  # OpenAlex paper fetching with field filtering
