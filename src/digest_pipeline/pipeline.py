@@ -5,17 +5,18 @@ Ties together all modules to execute the full daily digest workflow:
   1. Fetch papers from arXiv RSS feed, HuggingFace, OpenAlex
   2. Deduplicate across sources and filter previously-seen papers
   3. Extract text from PDFs (pypdf) — or use abstract for PDF-less papers
-  4. Chunk text semantically (Chonkie) and store in ChromaDB (ALL papers)
+  4. Chunk text semantically (Chonkie) and store in ChromaDB (ALL papers, parallel)
   5. Rank stored papers by interest relevance → select top N for digest
   6. (Optional) Fetch GitHub trending repos
   7. Summarize via LLM (per-paper JSON)
-  8. Post-process: ELI5, implications & critiques (per-paper JSON)
+  8. Post-process: ELI5, implications & critiques (per-paper JSON, parallel)
   9. Assemble per-paper analyses and send email digest
 """
 
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import logging
 import shutil
 import sys
@@ -23,6 +24,8 @@ import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
+import chromadb
 
 from digest_pipeline.chunker import chunk_text
 from digest_pipeline.config import Settings, get_settings
@@ -42,7 +45,7 @@ from digest_pipeline.archiver import archive_papers
 from digest_pipeline.ranker import rank_papers
 from digest_pipeline.seen_papers import filter_unseen, load_seen, record_papers, save_seen
 from digest_pipeline.summarizer import summarize
-from digest_pipeline.vectorstore import VectorStoreError, store_chunks, store_unparseable
+from digest_pipeline.vectorstore import VectorStoreError, _get_collection, store_chunks, store_unparseable
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +120,165 @@ def _cleanup_pdf_dirs(papers: list[Paper]) -> None:
         logger.info("Cleaned up %d temporary PDF directory(s).", len(cleaned))
 
 
+def _process_paper(
+    paper: Paper,
+    collection: chromadb.Collection,
+    settings: Settings,
+) -> Paper | None:
+    """Process a single paper: extract text, chunk, store. Thread-safe.
+
+    Returns the Paper on success, None if unparseable/skipped/error.
+    """
+    if paper.pdf_path is not None:
+        extraction = extract_text(paper.pdf_path, paper.paper_id)
+
+        if not extraction.parseable:
+            try:
+                store_unparseable(paper, settings, collection=collection)
+            except VectorStoreError:
+                logger.error("ChromaDB store failed for unparseable paper %s.", paper.paper_id)
+                return None
+            return None
+
+        text = extraction.text
+    else:
+        text = paper.abstract
+        if not text:
+            logger.warning("Paper %s has no PDF and no abstract — skipping.", paper.paper_id)
+            return None
+
+    chunks = chunk_text(text)
+
+    try:
+        store_chunks(paper, chunks, settings, collection=collection)
+    except VectorStoreError:
+        logger.error("ChromaDB store failed for paper %s.", paper.paper_id)
+        return None
+
+    return paper
+
+
+def _ingest_papers(papers: list[Paper], settings: Settings) -> list[Paper]:
+    """Extract, chunk, and store all papers. Parallel when workers > 1."""
+    # Warm chunker cache before pool starts (avoids race on first call).
+    chunk_text("warmup")
+
+    # Create shared ChromaDB collection handle for all workers.
+    try:
+        collection = _get_collection(settings)
+    except VectorStoreError:
+        logger.critical("ChromaDB connection failed — halting pipeline.")
+        sys.exit(1)
+
+    workers = settings.pipeline_ingest_workers
+
+    if workers <= 1:
+        # Sequential fallback
+        return [p for paper in papers if (p := _process_paper(paper, collection, settings)) is not None]
+
+    processed: list[Paper] = []
+    consecutive_failures = 0
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        future_to_paper = {
+            executor.submit(_process_paper, paper, collection, settings): paper
+            for paper in papers
+        }
+
+        for future in concurrent.futures.as_completed(future_to_paper):
+            try:
+                result = future.result()
+            except Exception:
+                paper = future_to_paper[future]
+                logger.exception("Unexpected error processing paper %s.", paper.paper_id)
+                result = None
+
+            if result is not None:
+                processed.append(result)
+                consecutive_failures = 0
+            else:
+                consecutive_failures += 1
+                if consecutive_failures >= 5:
+                    logger.critical(
+                        "5 consecutive paper failures — likely systemic. Cancelling remaining."
+                    )
+                    for f in future_to_paper:
+                        f.cancel()
+                    break
+
+    return processed
+
+
+def _postprocess(
+    papers: list[Paper],
+    settings: Settings,
+    github_section: str,
+) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
+    """Run summarization then post-processing (parallel or sequential).
+
+    Returns (summaries, implications, critiques, eli5).
+    """
+    summaries = summarize(papers, settings, github_section=github_section)
+
+    implications: dict[str, str] = {}
+    critiques: dict[str, str] = {}
+    eli5_results: dict[str, str] = {}
+
+    # Build list of enabled post-processors.
+    tasks: list[tuple[str, object]] = []
+    if settings.postprocessing_implications:
+        tasks.append(("implications", extract_implications))
+    if settings.postprocessing_critiques:
+        tasks.append(("critiques", generate_critiques))
+    if settings.postprocessing_eli5:
+        tasks.append(("eli5", generate_eli5))
+
+    if not tasks:
+        return summaries, implications, critiques, eli5_results
+
+    if settings.pipeline_postprocess_parallel and len(tasks) > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)) as executor:
+            future_to_name = {
+                executor.submit(fn, papers, settings): name
+                for name, fn in tasks
+            }
+            for future in concurrent.futures.as_completed(future_to_name):
+                name = future_to_name[future]
+                try:
+                    result = future.result()
+                except Exception:
+                    logger.exception("Post-processing '%s' failed.", name)
+                    result = {}
+                if name == "implications":
+                    implications = result
+                elif name == "critiques":
+                    critiques = result
+                elif name == "eli5":
+                    eli5_results = result
+    else:
+        # Sequential fallback
+        for name, fn in tasks:
+            try:
+                result = fn(papers, settings)
+            except Exception:
+                logger.exception("Post-processing '%s' failed.", name)
+                result = {}
+            if name == "implications":
+                implications = result
+            elif name == "critiques":
+                critiques = result
+            elif name == "eli5":
+                eli5_results = result
+
+    # Error logging for empty results (preserve existing asymmetry).
+    if settings.postprocessing_critiques and not critiques:
+        logger.error("Critique generation returned no results for %d papers.", len(papers))
+    if settings.postprocessing_eli5 and not eli5_results:
+        logger.error("ELI5 generation returned no results for %d papers.", len(papers))
+
+    return summaries, implications, critiques, eli5_results
+
+
 def run(settings: Settings | None = None) -> None:
     """Execute the full pipeline once."""
     if settings is None:
@@ -175,40 +337,8 @@ def run(settings: Settings | None = None) -> None:
         logger.warning("No papers found from any source. Exiting.")
         return
 
-    # ── Step 2-4: Extract → Chunk → Store (all papers) ──────────
-    # Ingest the full fetch pool into the vector store for future
-    # retrieval, then rank down to the digest subset afterward.
-    processed_papers = []
-    for paper in papers:
-        if paper.pdf_path is not None:
-            extraction = extract_text(paper.pdf_path, paper.paper_id)
-
-            if not extraction.parseable:
-                try:
-                    store_unparseable(paper, settings)
-                except VectorStoreError:
-                    logger.critical("ChromaDB connection failed — halting pipeline.")
-                    sys.exit(1)
-                continue
-
-            text = extraction.text
-        else:
-            # Papers without PDFs (e.g. HuggingFace, OpenAlex) —
-            # use the abstract directly for chunking/storage.
-            text = paper.abstract
-            if not text:
-                logger.warning("Paper %s has no PDF and no abstract — skipping.", paper.paper_id)
-                continue
-
-        chunks = chunk_text(text)
-
-        try:
-            store_chunks(paper, chunks, settings)
-        except VectorStoreError:
-            logger.critical("ChromaDB connection failed — halting pipeline.")
-            sys.exit(1)
-
-        processed_papers.append(paper)
+    # ── Step 2-4: Extract → Chunk → Store (all papers, parallel) ──
+    processed_papers = _ingest_papers(papers, settings)
 
     # ── Archive PDFs (optional) ──────────────────────────────────
     if settings.pdf_archive_dir:
@@ -261,29 +391,10 @@ def run(settings: Settings | None = None) -> None:
         trending = fetch_trending(settings)
         github_section = format_for_prompt(trending)
 
-    # ── Step 6: LLM summarization (per-paper JSON) ──────────────
-    summaries = summarize(processed_papers, settings, github_section=github_section)
-
-    # ── Step 7: Post-processing (per-paper JSON) ────────────────
-    implications: dict[str, str] = {}
-    if settings.postprocessing_implications:
-        implications = extract_implications(processed_papers, settings)
-
-    critiques: dict[str, str] = {}
-    if settings.postprocessing_critiques:
-        critiques = generate_critiques(processed_papers, settings)
-        if not critiques:
-            logger.error(
-                "Critique generation returned no results for %d papers.", len(processed_papers)
-            )
-
-    eli5_results: dict[str, str] = {}
-    if settings.postprocessing_eli5:
-        eli5_results = generate_eli5(processed_papers, settings)
-        if not eli5_results:
-            logger.error(
-                "ELI5 generation returned no results for %d papers.", len(processed_papers)
-            )
+    # ── Step 7: Post-processing (parallel or sequential) ─────────
+    summaries, implications, critiques, eli5_results = _postprocess(
+        processed_papers, settings, github_section
+    )
 
     # ── Step 8: Assemble & send ─────────────────────────────────
     analyses = _build_analyses(processed_papers, summaries, implications, critiques, eli5=eli5_results)

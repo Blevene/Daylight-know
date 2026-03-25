@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     postprocessing_critiques: bool = Field(default=True)
     postprocessing_eli5: bool = Field(default=True)
 
+    # ── Pipeline performance ─────────────────────────────────
+    pipeline_ingest_workers: int = Field(default=4)
+    pipeline_postprocess_parallel: bool = Field(default=True)
+
     # ── Interest-based ranking (pipeline-wide) ───────────────
     interest_profile: str = Field(default="")
     interest_keywords: list[str] = Field(default_factory=list)

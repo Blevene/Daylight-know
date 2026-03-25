@@ -55,6 +55,8 @@ def store_chunks(
     paper: Paper,
     chunks: list[TextChunk],
     settings: Settings,
+    *,
+    collection: chromadb.Collection | None = None,
 ) -> list[StoredChunk]:
     """Persist *chunks* for *paper* into ChromaDB.
 
@@ -65,7 +67,8 @@ def store_chunks(
     if not chunks:
         return []
 
-    collection = _get_collection(settings)
+    if collection is None:
+        collection = _get_collection(settings)
 
     ids: list[str] = []
     documents: list[str] = []
@@ -109,9 +112,10 @@ def store_chunks(
     return stored
 
 
-def store_unparseable(paper: Paper, settings: Settings) -> None:
+def store_unparseable(paper: Paper, settings: Settings, *, collection: chromadb.Collection | None = None) -> None:
     """Record an unparseable document in ChromaDB with a flag (EARS 2.4-2)."""
-    collection = _get_collection(settings)
+    if collection is None:
+        collection = _get_collection(settings)
     doc_id = f"{paper.paper_id}_unparseable"
     collection.upsert(
         ids=[doc_id],

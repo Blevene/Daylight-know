@@ -28,7 +28,7 @@ OpenAlex API ──────────┤                              [ful
                               (optional)          LLM Summarization (litellm)
                                                               |
                                                               v
-                                             Post-Processing (Implications & Critiques)
+                                             Post-Processing (ELI5, Implications & Critiques)
                                                               |
                                                               v
                                              Email Dispatch (SMTP/STARTTLS)
@@ -51,7 +51,8 @@ OpenAlex API ──────────┤                              [ful
 4. **Store** — Persists chunks with embeddings and metadata (title, authors,
    URL, date, chunk index) in ChromaDB for future retrieval. **All fetched
    papers are stored** — not just the ones selected for the digest — so the
-   vector store builds a comprehensive corpus over time.
+   vector store builds a comprehensive corpus over time. Steps 2-4 run in
+   parallel (configurable workers) for faster ingestion.
 5. **Rank** — When interest-based ranking is configured, papers are scored
    by keyword match + LLM relevance and the top N per source are selected
    for the digest (e.g., top 50 arXiv, top 20 OpenAlex). Papers that don't
@@ -61,9 +62,10 @@ OpenAlex API ──────────┤                              [ful
 7. **Summarize** — Sends paper text to an LLM via litellm, producing
    per-paper structured summaries. Supports OpenAI, Anthropic, Google,
    Cohere, Ollama, Azure, and 100+ other providers.
-8. **Post-process** — Optionally generates practical implications (who
-   benefits, how to apply) and structured critiques (strengths, weaknesses,
-   open questions) via separate LLM calls.
+8. **Post-process** — Optionally generates ELI5 (plain-language explanations),
+   practical implications (who benefits, how to apply), and structured
+   critiques (strengths, weaknesses, open questions) via separate LLM calls.
+   Enabled post-processors run in parallel by default.
 9. **Email** — Delivers the digest as a styled HTML + plaintext email via
    SMTP with STARTTLS, or prints to console in dry-run mode.
 
@@ -209,6 +211,14 @@ generate one for "Mail", and use it as `SMTP_PASSWORD`.
 |---|---|---|
 | `POSTPROCESSING_IMPLICATIONS` | Generate practical implications | `true` |
 | `POSTPROCESSING_CRITIQUES` | Generate structured critiques | `true` |
+| `POSTPROCESSING_ELI5` | Generate plain-language ELI5 explanations | `true` |
+
+#### Pipeline Performance
+
+| Variable | Description | Default |
+|---|---|---|
+| `PIPELINE_INGEST_WORKERS` | Parallel threads for extract/chunk/store | `4` |
+| `PIPELINE_POSTPROCESS_PARALLEL` | Run post-processing LLM calls concurrently | `true` |
 
 #### HuggingFace Daily Papers (Optional)
 
@@ -452,9 +462,10 @@ src/digest_pipeline/
 ├── llm_utils.py         # Shared LLM call utilities (backoff, structured output)
 ├── openalex_fetcher.py  # OpenAlex paper fetching with field filtering
 ├── pipeline.py          # Main orchestrator and CLI entry point
-├── postprocessor.py     # LLM post-processing (implications & critiques)
+├── postprocessor.py     # LLM post-processing (ELI5, implications & critiques)
 ├── prompts/             # LLM prompt templates (Markdown)
 │   ├── summarizer.md    # Summarization prompt
+│   ├── eli5.md          # ELI5 plain-language explanation prompt
 │   ├── implications.md  # Practical implications prompt
 │   ├── critiques.md     # Structured critique prompt
 │   └── ranker.md        # Interest-based relevance scoring prompt
