@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     # ── Post-processing (optional) ──────────────────────────────
     postprocessing_implications: bool = Field(default=True)
     postprocessing_critiques: bool = Field(default=True)
+    postprocessing_eli5: bool = Field(default=True)
 
     # ── Interest-based ranking (pipeline-wide) ───────────────
     interest_profile: str = Field(default="")
