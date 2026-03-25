@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 from digest_pipeline.config import Settings
 from digest_pipeline.extractor import ExtractionResult
 from digest_pipeline.fetcher import Paper
-from digest_pipeline.pipeline import PaperAnalysis, _build_analyses, _process_paper, _ingest_papers, run
+from digest_pipeline.pipeline import PaperAnalysis, _build_analyses, _process_paper, _ingest_papers, _postprocess, run
 from digest_pipeline.vectorstore import VectorStoreError
 
 
@@ -533,3 +533,63 @@ def test_ingest_papers_fail_fast(mock_chunk, mock_get_coll, mock_process, caplog
         result = _ingest_papers(papers, make_settings(pipeline_ingest_workers=2))
     assert len(result) == 0
     assert any("5 consecutive" in r.message for r in caplog.records)
+
+
+@patch("digest_pipeline.pipeline.generate_eli5", return_value={"paper_1": "ELI5"})
+@patch("digest_pipeline.pipeline.generate_critiques", return_value={"paper_1": "Crit"})
+@patch("digest_pipeline.pipeline.extract_implications", return_value={"paper_1": "Impl"})
+@patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "Sum"})
+def test_postprocess_parallel(mock_sum, mock_impl, mock_crit, mock_eli5, make_paper, make_settings):
+    papers = [make_paper()]
+    settings = make_settings(pipeline_postprocess_parallel=True)
+    summaries, implications, critiques, eli5 = _postprocess(papers, settings, "")
+    assert summaries == {"paper_1": "Sum"}
+    assert implications == {"paper_1": "Impl"}
+    assert critiques == {"paper_1": "Crit"}
+    assert eli5 == {"paper_1": "ELI5"}
+
+
+@patch("digest_pipeline.pipeline.generate_eli5", return_value={"paper_1": "ELI5"})
+@patch("digest_pipeline.pipeline.generate_critiques", return_value={"paper_1": "Crit"})
+@patch("digest_pipeline.pipeline.extract_implications", return_value={"paper_1": "Impl"})
+@patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "Sum"})
+def test_postprocess_sequential(mock_sum, mock_impl, mock_crit, mock_eli5, make_paper, make_settings):
+    papers = [make_paper()]
+    settings = make_settings(pipeline_postprocess_parallel=False)
+    summaries, implications, critiques, eli5 = _postprocess(papers, settings, "")
+    assert summaries == {"paper_1": "Sum"}
+    assert implications == {"paper_1": "Impl"}
+
+
+@patch("digest_pipeline.pipeline.generate_eli5")
+@patch("digest_pipeline.pipeline.generate_critiques")
+@patch("digest_pipeline.pipeline.extract_implications")
+@patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "Sum"})
+def test_postprocess_skips_disabled(mock_sum, mock_impl, mock_crit, mock_eli5, make_paper, make_settings):
+    papers = [make_paper()]
+    settings = make_settings(
+        postprocessing_implications=False,
+        postprocessing_critiques=False,
+        postprocessing_eli5=False,
+    )
+    summaries, implications, critiques, eli5 = _postprocess(papers, settings, "")
+    mock_impl.assert_not_called()
+    mock_crit.assert_not_called()
+    mock_eli5.assert_not_called()
+    assert implications == {}
+    assert critiques == {}
+    assert eli5 == {}
+
+
+@patch("digest_pipeline.pipeline.generate_eli5", side_effect=Exception("LLM down"))
+@patch("digest_pipeline.pipeline.generate_critiques", return_value={"paper_1": "Crit"})
+@patch("digest_pipeline.pipeline.extract_implications", return_value={"paper_1": "Impl"})
+@patch("digest_pipeline.pipeline.summarize", return_value={"paper_1": "Sum"})
+def test_postprocess_partial_failure(mock_sum, mock_impl, mock_crit, mock_eli5, make_paper, make_settings):
+    """One post-processor failing should not lose the others' results."""
+    papers = [make_paper()]
+    settings = make_settings(pipeline_postprocess_parallel=True)
+    summaries, implications, critiques, eli5 = _postprocess(papers, settings, "")
+    assert implications == {"paper_1": "Impl"}
+    assert critiques == {"paper_1": "Crit"}
+    assert eli5 == {}  # failed, returns empty

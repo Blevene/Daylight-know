@@ -209,6 +209,76 @@ def _ingest_papers(papers: list[Paper], settings: Settings) -> list[Paper]:
     return processed
 
 
+def _postprocess(
+    papers: list[Paper],
+    settings: Settings,
+    github_section: str,
+) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
+    """Run summarization then post-processing (parallel or sequential).
+
+    Returns (summaries, implications, critiques, eli5).
+    """
+    summaries = summarize(papers, settings, github_section=github_section)
+
+    implications: dict[str, str] = {}
+    critiques: dict[str, str] = {}
+    eli5_results: dict[str, str] = {}
+
+    # Build list of enabled post-processors.
+    tasks: list[tuple[str, object]] = []
+    if settings.postprocessing_implications:
+        tasks.append(("implications", extract_implications))
+    if settings.postprocessing_critiques:
+        tasks.append(("critiques", generate_critiques))
+    if settings.postprocessing_eli5:
+        tasks.append(("eli5", generate_eli5))
+
+    if not tasks:
+        return summaries, implications, critiques, eli5_results
+
+    if settings.pipeline_postprocess_parallel and len(tasks) > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)) as executor:
+            future_to_name = {
+                executor.submit(fn, papers, settings): name
+                for name, fn in tasks
+            }
+            for future in concurrent.futures.as_completed(future_to_name):
+                name = future_to_name[future]
+                try:
+                    result = future.result()
+                except Exception:
+                    logger.exception("Post-processing '%s' failed.", name)
+                    result = {}
+                if name == "implications":
+                    implications = result
+                elif name == "critiques":
+                    critiques = result
+                elif name == "eli5":
+                    eli5_results = result
+    else:
+        # Sequential fallback
+        for name, fn in tasks:
+            try:
+                result = fn(papers, settings)
+            except Exception:
+                logger.exception("Post-processing '%s' failed.", name)
+                result = {}
+            if name == "implications":
+                implications = result
+            elif name == "critiques":
+                critiques = result
+            elif name == "eli5":
+                eli5_results = result
+
+    # Error logging for empty results (preserve existing asymmetry).
+    if settings.postprocessing_critiques and not critiques:
+        logger.error("Critique generation returned no results for %d papers.", len(papers))
+    if settings.postprocessing_eli5 and not eli5_results:
+        logger.error("ELI5 generation returned no results for %d papers.", len(papers))
+
+    return summaries, implications, critiques, eli5_results
+
+
 def run(settings: Settings | None = None) -> None:
     """Execute the full pipeline once."""
     if settings is None:
@@ -321,29 +391,10 @@ def run(settings: Settings | None = None) -> None:
         trending = fetch_trending(settings)
         github_section = format_for_prompt(trending)
 
-    # ── Step 6: LLM summarization (per-paper JSON) ──────────────
-    summaries = summarize(processed_papers, settings, github_section=github_section)
-
-    # ── Step 7: Post-processing (per-paper JSON) ────────────────
-    implications: dict[str, str] = {}
-    if settings.postprocessing_implications:
-        implications = extract_implications(processed_papers, settings)
-
-    critiques: dict[str, str] = {}
-    if settings.postprocessing_critiques:
-        critiques = generate_critiques(processed_papers, settings)
-        if not critiques:
-            logger.error(
-                "Critique generation returned no results for %d papers.", len(processed_papers)
-            )
-
-    eli5_results: dict[str, str] = {}
-    if settings.postprocessing_eli5:
-        eli5_results = generate_eli5(processed_papers, settings)
-        if not eli5_results:
-            logger.error(
-                "ELI5 generation returned no results for %d papers.", len(processed_papers)
-            )
+    # ── Step 7: Post-processing (parallel or sequential) ─────────
+    summaries, implications, critiques, eli5_results = _postprocess(
+        processed_papers, settings, github_section
+    )
 
     # ── Step 8: Assemble & send ─────────────────────────────────
     analyses = _build_analyses(processed_papers, summaries, implications, critiques, eli5=eli5_results)
