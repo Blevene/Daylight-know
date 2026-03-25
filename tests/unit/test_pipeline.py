@@ -3,11 +3,13 @@
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
+from digest_pipeline.config import Settings
 from digest_pipeline.extractor import ExtractionResult
 from digest_pipeline.fetcher import Paper
-from digest_pipeline.pipeline import PaperAnalysis, _build_analyses, run
+from digest_pipeline.pipeline import PaperAnalysis, _build_analyses, _process_paper, _ingest_papers, run
+from digest_pipeline.vectorstore import VectorStoreError
 
 
 def _make_paper(**overrides) -> Paper:
@@ -84,6 +86,7 @@ def test_run_no_papers(mock_fetch, make_settings):
     mock_fetch.assert_called_once()
 
 
+@patch("digest_pipeline.pipeline._get_collection")
 @patch("digest_pipeline.pipeline.save_seen")
 @patch("digest_pipeline.pipeline.load_seen", return_value={})
 @patch("digest_pipeline.pipeline.send_digest")
@@ -112,6 +115,7 @@ def test_run_full_pipeline(
     mock_email,
     mock_load_seen,
     mock_save_seen,
+    mock_get_coll,
     make_settings,
 ):
     paper = _make_paper()
@@ -122,7 +126,7 @@ def test_run_full_pipeline(
 
     mock_fetch.assert_called_once_with(settings, max_results=settings.arxiv_max_results)
     mock_extract.assert_called_once()
-    mock_chunk.assert_called_once_with("content")
+    mock_chunk.assert_called_with("content")
     mock_store.assert_called_once()
     mock_summarize.assert_called_once()
     mock_implications.assert_called_once()
@@ -142,6 +146,7 @@ def test_run_full_pipeline(
     assert analyses[0].url == "https://arxiv.org/abs/2401.00001"
 
 
+@patch("digest_pipeline.pipeline._get_collection")
 @patch("digest_pipeline.pipeline.save_seen")
 @patch("digest_pipeline.pipeline.load_seen", return_value={})
 @patch("digest_pipeline.pipeline.send_digest")
@@ -168,6 +173,7 @@ def test_run_postprocessing_disabled(
     mock_email,
     mock_load_seen,
     mock_save_seen,
+    mock_get_coll,
     make_settings,
 ):
     paper = _make_paper()
@@ -211,8 +217,10 @@ def test_build_analyses_warns_on_missing_keys(caplog):
     assert not any("Missing implications" in w and "paper_2" in w for w in warnings)
 
 
+@patch("digest_pipeline.pipeline._get_collection")
 @patch("digest_pipeline.pipeline.save_seen")
 @patch("digest_pipeline.pipeline.load_seen", return_value={})
+@patch("digest_pipeline.pipeline.chunk_text")
 @patch("digest_pipeline.pipeline.store_unparseable")
 @patch(
     "digest_pipeline.pipeline.extract_text",
@@ -220,7 +228,7 @@ def test_build_analyses_warns_on_missing_keys(caplog):
 )
 @patch("digest_pipeline.pipeline.fetch_papers")
 def test_run_unparseable_paper(
-    mock_fetch, mock_extract, mock_store_unparse, mock_load_seen, mock_save_seen, make_settings
+    mock_fetch, mock_extract, mock_store_unparse, mock_chunk, mock_load_seen, mock_save_seen, mock_get_coll, make_settings
 ):
     paper = _make_paper()
     mock_fetch.return_value = [paper]
@@ -230,6 +238,7 @@ def test_run_unparseable_paper(
     mock_store_unparse.assert_called_once()
 
 
+@patch("digest_pipeline.pipeline._get_collection")
 @patch("digest_pipeline.pipeline.save_seen")
 @patch("digest_pipeline.pipeline.load_seen", return_value={})
 @patch("digest_pipeline.pipeline.send_digest")
@@ -258,6 +267,7 @@ def test_run_logs_error_when_critiques_empty(
     mock_email,
     mock_load_seen,
     mock_save_seen,
+    mock_get_coll,
     caplog,
     make_settings,
 ):
@@ -276,6 +286,7 @@ def test_run_logs_error_when_critiques_empty(
     mock_email.assert_called_once()
 
 
+@patch("digest_pipeline.pipeline._get_collection")
 @patch("digest_pipeline.pipeline.save_seen")
 @patch("digest_pipeline.pipeline.load_seen", return_value={})
 @patch("digest_pipeline.pipeline.send_digest")
@@ -297,6 +308,7 @@ def test_pipeline_calls_ranker_for_openalex(
     mock_send,
     mock_load_seen,
     mock_save_seen,
+    mock_get_coll,
     make_settings,
 ):
     """rank_papers is called on OpenAlex results before adding to pipeline."""
@@ -319,6 +331,7 @@ def test_pipeline_calls_ranker_for_openalex(
     assert mock_rank.call_args[0][0] == [oa_paper]
 
 
+@patch("digest_pipeline.pipeline._get_collection")
 @patch("digest_pipeline.pipeline.save_seen")
 @patch("digest_pipeline.pipeline.record_papers")
 @patch("digest_pipeline.pipeline.filter_unseen", side_effect=lambda papers, seen: papers)
@@ -348,6 +361,7 @@ def test_arxiv_papers_ranked_when_interest_configured(
     mock_filter,
     mock_record,
     mock_save,
+    mock_get_coll,
     make_paper,
     make_settings,
 ):
@@ -400,6 +414,7 @@ def test_build_analyses_warns_on_missing_eli5(caplog):
     assert any("Missing ELI5" in w and "paper_1" in w for w in warnings)
 
 
+@patch("digest_pipeline.pipeline._get_collection")
 @patch("digest_pipeline.pipeline.save_seen")
 @patch("digest_pipeline.pipeline.load_seen", return_value={})
 @patch("digest_pipeline.pipeline.send_digest")
@@ -418,6 +433,7 @@ def test_run_logs_error_when_eli5_empty(
     mock_fetch, mock_extract, mock_chunk, mock_store,
     mock_summarize, mock_implications, mock_critiques,
     mock_eli5, mock_email, mock_load_seen, mock_save_seen,
+    mock_get_coll,
     caplog, make_settings,
 ):
     mock_fetch.return_value = [_make_paper()]
@@ -429,3 +445,91 @@ def test_run_logs_error_when_eli5_empty(
         for r in caplog.records
     )
     mock_email.assert_called_once()
+
+
+@patch("digest_pipeline.pipeline.store_chunks")
+@patch("digest_pipeline.pipeline.chunk_text", return_value=[])
+@patch(
+    "digest_pipeline.pipeline.extract_text",
+    return_value=ExtractionResult(paper_id="2401.00001", text="content", parseable=True),
+)
+def test_process_paper_success(mock_extract, mock_chunk, mock_store):
+    paper = _make_paper()
+    mock_coll = MagicMock()
+    settings = Settings(_env_file=None, llm_api_key="x")
+    result = _process_paper(paper, mock_coll, settings)
+    assert result is paper
+    mock_extract.assert_called_once()
+    mock_chunk.assert_called_once_with("content")
+    mock_store.assert_called_once()
+
+
+@patch("digest_pipeline.pipeline.store_unparseable")
+@patch(
+    "digest_pipeline.pipeline.extract_text",
+    return_value=ExtractionResult(paper_id="2401.00001", text="", parseable=False),
+)
+def test_process_paper_unparseable(mock_extract, mock_store_unparse):
+    paper = _make_paper()
+    mock_coll = MagicMock()
+    settings = Settings(_env_file=None, llm_api_key="x")
+    result = _process_paper(paper, mock_coll, settings)
+    assert result is None
+    mock_store_unparse.assert_called_once()
+
+
+def test_process_paper_no_pdf_no_abstract():
+    paper = _make_paper(pdf_path=None, abstract="")
+    mock_coll = MagicMock()
+    settings = Settings(_env_file=None, llm_api_key="x")
+    result = _process_paper(paper, mock_coll, settings)
+    assert result is None
+
+
+@patch("digest_pipeline.pipeline.store_chunks", side_effect=VectorStoreError("down"))
+@patch("digest_pipeline.pipeline.chunk_text", return_value=[])
+@patch(
+    "digest_pipeline.pipeline.extract_text",
+    return_value=ExtractionResult(paper_id="2401.00001", text="content", parseable=True),
+)
+def test_process_paper_vectorstore_error_returns_none(mock_extract, mock_chunk, mock_store):
+    paper = _make_paper()
+    mock_coll = MagicMock()
+    settings = Settings(_env_file=None, llm_api_key="x")
+    result = _process_paper(paper, mock_coll, settings)
+    assert result is None
+
+
+@patch("digest_pipeline.pipeline._process_paper")
+@patch("digest_pipeline.pipeline._get_collection")
+@patch("digest_pipeline.pipeline.chunk_text")
+def test_ingest_papers_parallel(mock_chunk, mock_get_coll, mock_process, make_settings):
+    papers = [_make_paper(paper_id=f"p{i}") for i in range(4)]
+    mock_get_coll.return_value = MagicMock()
+    mock_process.side_effect = lambda p, c, s: p
+    result = _ingest_papers(papers, make_settings(pipeline_ingest_workers=2))
+    assert len(result) == 4
+    assert mock_process.call_count == 4
+
+
+@patch("digest_pipeline.pipeline._process_paper")
+@patch("digest_pipeline.pipeline._get_collection")
+@patch("digest_pipeline.pipeline.chunk_text")
+def test_ingest_papers_sequential_fallback(mock_chunk, mock_get_coll, mock_process, make_settings):
+    papers = [_make_paper(paper_id=f"p{i}") for i in range(3)]
+    mock_get_coll.return_value = MagicMock()
+    mock_process.side_effect = lambda p, c, s: p
+    result = _ingest_papers(papers, make_settings(pipeline_ingest_workers=1))
+    assert len(result) == 3
+
+
+@patch("digest_pipeline.pipeline._process_paper", return_value=None)
+@patch("digest_pipeline.pipeline._get_collection")
+@patch("digest_pipeline.pipeline.chunk_text")
+def test_ingest_papers_fail_fast(mock_chunk, mock_get_coll, mock_process, caplog, make_settings):
+    papers = [_make_paper(paper_id=f"p{i}") for i in range(20)]
+    mock_get_coll.return_value = MagicMock()
+    with caplog.at_level(logging.CRITICAL, logger="digest_pipeline.pipeline"):
+        result = _ingest_papers(papers, make_settings(pipeline_ingest_workers=2))
+    assert len(result) == 0
+    assert any("5 consecutive" in r.message for r in caplog.records)

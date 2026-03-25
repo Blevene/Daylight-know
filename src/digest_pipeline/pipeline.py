@@ -16,6 +16,7 @@ Ties together all modules to execute the full daily digest workflow:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import logging
 import shutil
 import sys
@@ -23,6 +24,8 @@ import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
+import chromadb
 
 from digest_pipeline.chunker import chunk_text
 from digest_pipeline.config import Settings, get_settings
@@ -42,7 +45,7 @@ from digest_pipeline.archiver import archive_papers
 from digest_pipeline.ranker import rank_papers
 from digest_pipeline.seen_papers import filter_unseen, load_seen, record_papers, save_seen
 from digest_pipeline.summarizer import summarize
-from digest_pipeline.vectorstore import VectorStoreError, store_chunks, store_unparseable
+from digest_pipeline.vectorstore import VectorStoreError, _get_collection, store_chunks, store_unparseable
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +120,95 @@ def _cleanup_pdf_dirs(papers: list[Paper]) -> None:
         logger.info("Cleaned up %d temporary PDF directory(s).", len(cleaned))
 
 
+def _process_paper(
+    paper: Paper,
+    collection: chromadb.Collection,
+    settings: Settings,
+) -> Paper | None:
+    """Process a single paper: extract text, chunk, store. Thread-safe.
+
+    Returns the Paper on success, None if unparseable/skipped/error.
+    """
+    if paper.pdf_path is not None:
+        extraction = extract_text(paper.pdf_path, paper.paper_id)
+
+        if not extraction.parseable:
+            try:
+                store_unparseable(paper, settings, collection=collection)
+            except VectorStoreError:
+                logger.error("ChromaDB store failed for unparseable paper %s.", paper.paper_id)
+                return None
+            return None
+
+        text = extraction.text
+    else:
+        text = paper.abstract
+        if not text:
+            logger.warning("Paper %s has no PDF and no abstract — skipping.", paper.paper_id)
+            return None
+
+    chunks = chunk_text(text)
+
+    try:
+        store_chunks(paper, chunks, settings, collection=collection)
+    except VectorStoreError:
+        logger.error("ChromaDB store failed for paper %s.", paper.paper_id)
+        return None
+
+    return paper
+
+
+def _ingest_papers(papers: list[Paper], settings: Settings) -> list[Paper]:
+    """Extract, chunk, and store all papers. Parallel when workers > 1."""
+    # Warm chunker cache before pool starts (avoids race on first call).
+    chunk_text("warmup")
+
+    # Create shared ChromaDB collection handle for all workers.
+    try:
+        collection = _get_collection(settings)
+    except VectorStoreError:
+        logger.critical("ChromaDB connection failed — halting pipeline.")
+        sys.exit(1)
+
+    workers = settings.pipeline_ingest_workers
+
+    if workers <= 1:
+        # Sequential fallback
+        return [p for paper in papers if (p := _process_paper(paper, collection, settings)) is not None]
+
+    processed: list[Paper] = []
+    consecutive_failures = 0
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        future_to_paper = {
+            executor.submit(_process_paper, paper, collection, settings): paper
+            for paper in papers
+        }
+
+        for future in concurrent.futures.as_completed(future_to_paper):
+            try:
+                result = future.result()
+            except Exception:
+                paper = future_to_paper[future]
+                logger.exception("Unexpected error processing paper %s.", paper.paper_id)
+                result = None
+
+            if result is not None:
+                processed.append(result)
+                consecutive_failures = 0
+            else:
+                consecutive_failures += 1
+                if consecutive_failures >= 5:
+                    logger.critical(
+                        "5 consecutive paper failures — likely systemic. Cancelling remaining."
+                    )
+                    for f in future_to_paper:
+                        f.cancel()
+                    break
+
+    return processed
+
+
 def run(settings: Settings | None = None) -> None:
     """Execute the full pipeline once."""
     if settings is None:
@@ -175,40 +267,8 @@ def run(settings: Settings | None = None) -> None:
         logger.warning("No papers found from any source. Exiting.")
         return
 
-    # ── Step 2-4: Extract → Chunk → Store (all papers) ──────────
-    # Ingest the full fetch pool into the vector store for future
-    # retrieval, then rank down to the digest subset afterward.
-    processed_papers = []
-    for paper in papers:
-        if paper.pdf_path is not None:
-            extraction = extract_text(paper.pdf_path, paper.paper_id)
-
-            if not extraction.parseable:
-                try:
-                    store_unparseable(paper, settings)
-                except VectorStoreError:
-                    logger.critical("ChromaDB connection failed — halting pipeline.")
-                    sys.exit(1)
-                continue
-
-            text = extraction.text
-        else:
-            # Papers without PDFs (e.g. HuggingFace, OpenAlex) —
-            # use the abstract directly for chunking/storage.
-            text = paper.abstract
-            if not text:
-                logger.warning("Paper %s has no PDF and no abstract — skipping.", paper.paper_id)
-                continue
-
-        chunks = chunk_text(text)
-
-        try:
-            store_chunks(paper, chunks, settings)
-        except VectorStoreError:
-            logger.critical("ChromaDB connection failed — halting pipeline.")
-            sys.exit(1)
-
-        processed_papers.append(paper)
+    # ── Step 2-4: Extract → Chunk → Store (all papers, parallel) ──
+    processed_papers = _ingest_papers(papers, settings)
 
     # ── Archive PDFs (optional) ──────────────────────────────────
     if settings.pdf_archive_dir:
