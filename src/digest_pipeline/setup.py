@@ -381,6 +381,9 @@ def _collect_optional_settings() -> dict[str, str]:
     config["POSTPROCESSING_CRITIQUES"] = (
         "true" if _prompt_bool("Enable critique generation?", default=True) else "false"
     )
+    config["POSTPROCESSING_ELI5"] = (
+        "true" if _prompt_bool("Enable ELI5 (plain-language) explanations?", default=True) else "false"
+    )
 
     config["PDF_DOWNLOAD_MAX_RETRIES"] = _prompt("PDF download max retries", "3")
     config["PDF_DOWNLOAD_WORKERS"] = _prompt("Parallel PDF download workers", "8")
@@ -526,7 +529,7 @@ def _write_env_file(config: dict[str, str], path: Path) -> None:
         ),
         (
             "Post-processing",
-            ["POSTPROCESSING_IMPLICATIONS", "POSTPROCESSING_CRITIQUES"],
+            ["POSTPROCESSING_IMPLICATIONS", "POSTPROCESSING_CRITIQUES", "POSTPROCESSING_ELI5"],
         ),
         (
             "PDF Download",

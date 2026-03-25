@@ -1,4 +1,4 @@
-"""LLM-powered post-processing: practical implications and critiques.
+"""LLM-powered post-processing: practical implications, critiques, and ELI5 explanations.
 
 Provides additional analysis layers on top of the base summarization.
 Each function makes a separate LLM call with a specialised system prompt,
@@ -20,6 +20,7 @@ from digest_pipeline.prompts import load_prompt
 
 IMPLICATIONS_SYSTEM_PROMPT = load_prompt("implications")
 CRITIQUES_SYSTEM_PROMPT = load_prompt("critiques")
+ELI5_SYSTEM_PROMPT = load_prompt("eli5")
 
 
 def extract_implications(papers: list[Paper], settings: Settings) -> dict[str, str]:
@@ -52,5 +53,22 @@ def generate_critiques(papers: list[Paper], settings: Settings) -> dict[str, str
         settings,
         label="critiques",
         schema_name="paper_critiques",
+    )
+    return {k: _normalize_markdown_bullets(v) for k, v in raw.items()}
+
+
+def generate_eli5(papers: list[Paper], settings: Settings) -> dict[str, str]:
+    """Generate per-paper ELI5 (plain-language) explanations.
+
+    Returns a dict mapping ``paper_N`` keys to ELI5 strings.
+    Enforces ``settings.llm_max_tokens`` and retries with exponential
+    backoff on rate-limit errors, matching the summarizer contract.
+    """
+    raw = llm_call(
+        papers,
+        ELI5_SYSTEM_PROMPT,
+        settings,
+        label="eli5",
+        schema_name="paper_eli5",
     )
     return {k: _normalize_markdown_bullets(v) for k, v in raw.items()}

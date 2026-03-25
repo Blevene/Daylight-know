@@ -95,6 +95,10 @@ HTML_TEMPLATE = _html_env.from_string("""\
     <h3>Summary</h3>
     <div class="section">{{ paper.summary | md }}</div>
     {% endif %}
+    {% if paper.eli5 %}
+    <h3>ELI5</h3>
+    <div class="section">{{ paper.eli5 | md }}</div>
+    {% endif %}
     {% if paper.implications %}
     <h3>Practical Implications</h3>
     <div class="section">{{ paper.implications | md }}</div>
@@ -147,6 +151,12 @@ Fields of Study: {{ paper.fields_of_study | join(', ') }}
 ### Summary
 
 {{ paper.summary }}
+{% endif %}
+{% if paper.eli5 %}
+
+### ELI5
+
+{{ paper.eli5 }}
 {% endif %}
 {% if paper.implications %}
 
