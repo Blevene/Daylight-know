@@ -59,7 +59,7 @@ class TestNormalizeMarkdownBullets:
         result = _normalize_markdown_bullets(text)
         # Each bullet should be on its own line
         lines = result.split("\n")
-        bullet_lines = [l for l in lines if l.startswith("- ")]
+        bullet_lines = [line for line in lines if line.startswith("- ")]
         assert len(bullet_lines) == 3
 
     def test_bold_headers_get_paragraph_breaks(self):
@@ -82,7 +82,7 @@ class TestNormalizeMarkdownBullets:
         text = "**Who Benefits:** • Engineers • Scientists **Applications:** • Tool A • Tool B"
         result = _normalize_markdown_bullets(text)
         lines = result.split("\n")
-        bullet_lines = [l for l in lines if l.startswith("- ")]
+        bullet_lines = [line for line in lines if line.startswith("- ")]
         assert len(bullet_lines) == 4
 
     def test_unicode_bullets_render_as_html_list(self):

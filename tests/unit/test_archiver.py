@@ -1,7 +1,9 @@
 """Tests for the PDF archiver module."""
 
-import duckdb
-from digest_pipeline.archiver import _init_db, _sanitize_filename, _upsert_papers
+from datetime import datetime, timezone
+
+from digest_pipeline.archiver import _init_db, _sanitize_filename, _upsert_papers, _generate_markdown_index
+from digest_pipeline.fetcher import Paper
 
 
 def test_sanitize_basic_title():
@@ -40,10 +42,6 @@ def test_sanitize_whitespace_collapsed():
     result = _sanitize_filename("  Multiple   Spaces  ", "2603.00001")
     assert result == "Multiple-Spaces_2603.00001.pdf"
 
-
-from datetime import datetime, timezone
-from digest_pipeline.archiver import _generate_markdown_index
-from digest_pipeline.fetcher import Paper
 
 
 def _make_paper(**kwargs):

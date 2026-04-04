@@ -3,7 +3,6 @@
 import duckdb
 import pytest
 from datetime import datetime, timezone
-from pathlib import Path
 
 from digest_pipeline.archiver import archive_papers
 from digest_pipeline.config import Settings
