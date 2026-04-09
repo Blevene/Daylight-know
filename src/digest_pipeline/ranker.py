@@ -7,7 +7,9 @@ main digest pipeline for any source (arXiv, OpenAlex, etc.).
 
 from __future__ import annotations
 
+import json
 import logging
+import time
 
 import litellm
 
@@ -47,6 +49,24 @@ def compute_keyword_scores(papers: list[Paper], keywords: list[str]) -> list[int
     return scores
 
 
+def _build_ranker_response_format(num_papers: int) -> dict:
+    """Build a response_format for ranker scores with integer-typed properties."""
+    properties = {f"paper_{i}": {"type": "integer"} for i in range(1, num_papers + 1)}
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "ranker_scores",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": properties,
+                "required": list(properties.keys()),
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
 def score_batch_with_llm(
     papers: list[Paper],
     settings: Settings,
@@ -71,25 +91,56 @@ def score_batch_with_llm(
         parts.append(f"paper_{i}: {p.title}\n{p.abstract[:500]}")
     user_prompt = "\n---\n".join(parts)
 
-    try:
-        response = litellm.completion(
-            model=settings.llm_model,
-            max_tokens=256,
-            api_key=settings.llm_api_key,
-            api_base=settings.llm_api_base,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        )
-        raw = response.choices[0].message.content or ""
-        parsed = parse_llm_json(raw)
-        return [
-            max(0, min(10, int(parsed.get(f"paper_{i}", 0)))) for i in range(1, len(papers) + 1)
-        ]
-    except Exception:
-        logger.warning("LLM scoring failed — falling back to zero scores.", exc_info=True)
-        return [0] * len(papers)
+    response_format = _build_ranker_response_format(len(papers))
+    max_attempts = 5
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = litellm.completion(
+                model=settings.llm_model,
+                max_tokens=512,
+                api_key=settings.llm_api_key,
+                api_base=settings.llm_api_base,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format=response_format,
+            )
+            raw = response.choices[0].message.content or ""
+            parsed = parse_llm_json(raw)
+            return [
+                max(0, min(10, int(parsed.get(f"paper_{i}", 0))))
+                for i in range(1, len(papers) + 1)
+            ]
+        except (json.JSONDecodeError, ValueError, KeyError) as exc:
+            logger.warning(
+                "LLM scoring parse error (attempt %d/%d): %s",
+                attempt,
+                max_attempts,
+                exc,
+            )
+            if attempt < max_attempts:
+                time.sleep(2**attempt)
+                continue
+            logger.warning("LLM scoring failed after %d attempts — falling back to zero scores.", max_attempts)
+            return [0] * len(papers)
+        except litellm.RateLimitError as exc:
+            logger.warning(
+                "Rate-limited during scoring (attempt %d/%d): %s",
+                attempt,
+                max_attempts,
+                exc,
+            )
+            if attempt < max_attempts:
+                time.sleep(2**attempt)
+                continue
+            logger.warning("LLM scoring rate-limited after %d attempts — falling back to zero scores.", max_attempts)
+            return [0] * len(papers)
+        except Exception:
+            logger.warning("LLM scoring failed — falling back to zero scores.", exc_info=True)
+            return [0] * len(papers)
+
+    return [0] * len(papers)
 
 
 def rank_papers(
